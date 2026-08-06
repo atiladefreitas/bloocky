@@ -1,18 +1,8 @@
-# bloocky.nvim
+# Bloocky
 
 A timeblocking calendar for Neovim. Plan your day by placing time blocks on a calendar with **day**, **week** and **month** views, navigate everything with `hjkl`, and optionally bring your [dooing](https://github.com/atiladefreitas/dooing) tasks straight onto the calendar.
 
-```
-        Sun 02   Mon 03   Tue 04   Wed 05   Thu 06   Fri 07   Sat 08
- due                              ◆×2 Ship…
-─────────────────────────────────────────────────────────────────────
- 06:00
- 07:00          ▎07:00 G…         ▎07:00 G…         ▎07:00 G…
- 08:00
- 09:00 ▎09:00 Deep work 󰑖
- 10:00 ▎        ▎10:00 S…▎10:00 S…▎10:00 S…▎10:00 S…▎10:00 S…
- 11:00
-```
+![bloocky.nvim — week view with the day view alongside](docs/overview.png)
 
 ---
 
