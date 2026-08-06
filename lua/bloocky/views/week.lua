@@ -120,10 +120,12 @@ function M.render(ctx)
 		end
 	end
 
+	-- Whatever the header and strips did not use goes to the hour grid, which
+	-- always shows every hour — grouping them if the window is short
 	local h0, h1 = cfg.hours.start, cfg.hours["end"]
-	for h = h0, h1 - 1 do
-		local row_s, row_e = h * 60, (h + 1) * 60
-		local chunks = { { string.format(" %02d:00 ", h), "BloockyTime" } }
+	for _, row in ipairs(utils.hour_layout(h0, h1, ctx.height - #lines)) do
+		local row_s, row_e = row.s, row.e
+		local chunks = { { row.label, "BloockyTime" } }
 		for i in ipairs(days) do
 			table.insert(chunks, { "│", "BloockyGrid" })
 			local block, n = occ_at(occ[i], row_s, row_e)
@@ -155,7 +157,7 @@ function M.render(ctx)
 		end
 
 		-- Dotted divider between hours; blocks spanning the boundary stay solid
-		if h < h1 - 1 then
+		if row.div then
 			local bmin = row_e
 			local div = { { string.rep(" ", gutter) } }
 			for i in ipairs(days) do

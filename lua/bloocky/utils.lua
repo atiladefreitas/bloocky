@@ -171,6 +171,32 @@ function M.snap(min, granularity)
 	return math.floor(min / granularity + 0.5) * granularity
 end
 
+-- Fit the hours [h0, h1) into `avail` lines so the whole day is always visible.
+-- Roomy: one line per hour plus a divider between them. Tighter: drop the
+-- dividers. Tighter still: group several hours onto one line.
+-- Returns rows of { s, e, label, div } — minutes covered, gutter label, and
+-- whether a divider line follows.
+function M.hour_layout(h0, h1, avail)
+	local hours = math.max(1, h1 - h0)
+	avail = math.max(1, avail)
+	local step = math.max(1, math.ceil(hours / avail))
+	local rows = math.ceil(hours / step)
+	local dividers = rows * 2 - 1 <= avail
+
+	local out, h = {}, h0
+	while h < h1 do
+		local e = math.min(h + step, h1)
+		table.insert(out, {
+			s = h * 60,
+			e = e * 60,
+			label = (e - h == 1) and string.format(" %02d:00 ", h) or string.format(" %02d-%02d ", h, e),
+			div = dividers and e < h1,
+		})
+		h = e
+	end
+	return out
+end
+
 --------------------------------------------------------------------------
 -- Text helpers — widths are display cells, positions are byte offsets
 --------------------------------------------------------------------------

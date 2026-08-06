@@ -32,9 +32,16 @@ function M.render(ctx)
 	local span_days = math.floor((utils.date_to_time(last) - utils.date_to_time(grid_start)) / 86400) + 1
 	local weeks = math.ceil(span_days / 7)
 
-	-- header (2 lines) + week separators between rows
+	-- Weekday header + rule take 2 lines, then one separator between week rows.
+	-- Every week row must fit, so the separators go first when space is tight.
+	local rules = true
 	local avail = ctx.height - 2 - (weeks - 1)
-	local cell_h = math.max(2, math.min(6, math.floor(avail / weeks)))
+	local cell_h = math.floor(avail / weeks)
+	if cell_h < 2 then
+		rules = false
+		cell_h = math.max(1, math.floor((ctx.height - 2) / weeks))
+	end
+	cell_h = math.min(cell_h, 8)
 
 	-- Weekday header
 	local first_wd = (cfg.week_start == "monday") and 2 or 1
@@ -138,7 +145,7 @@ function M.render(ctx)
 				end
 			end
 		end
-		if w < weeks - 1 then
+		if rules and w < weeks - 1 then
 			week_rule()
 		end
 	end

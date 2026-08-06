@@ -35,8 +35,19 @@ local function content_width()
 	return math.floor(vim.o.columns * w)
 end
 
+-- Rows the border steals from the editor (title and footer live in it)
+local function border_rows()
+	local b = config.options.window.border
+	if not b or b == "none" or b == "shadow" then
+		return 0
+	end
+	return 2
+end
+
+-- Rows usable for content: the editor minus the command line and the border,
+-- keeping one spare row so the window never sits flush against the cmdline.
 local function max_height()
-	return math.max(10, vim.o.lines - 6)
+	return math.max(6, vim.o.lines - vim.o.cmdheight - border_rows() - 1)
 end
 
 local function clamp_cursor()
@@ -80,12 +91,15 @@ function M.render()
 	local lines, hls, meta = views[M.view].render(ctx)
 
 	local width = meta.width or ctx.width
-	local height = math.min(#lines, max_height())
+	local height = math.min(#lines, ctx.height)
+	-- Centre inside the rows the editor actually offers, border included
+	local usable = vim.o.lines - vim.o.cmdheight
+	local row = math.floor((usable - (height + border_rows())) / 2)
 	vim.api.nvim_win_set_config(win, {
 		relative = "editor",
 		width = width,
 		height = height,
-		row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1),
+		row = math.max(0, row),
 		col = math.max(0, math.floor((vim.o.columns - width) / 2)),
 		title = meta.title or " Bloocky ",
 		title_pos = "center",
@@ -343,6 +357,17 @@ function M.open(view)
 		callback = function()
 			win = nil
 			buf = nil
+		end,
+	})
+
+	-- Refit the layout to the new terminal size
+	vim.api.nvim_create_autocmd("VimResized", {
+		buffer = buf,
+		callback = function()
+			if not is_open() then
+				return true
+			end
+			M.render()
 		end,
 	})
 

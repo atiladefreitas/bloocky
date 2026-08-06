@@ -53,13 +53,21 @@ function M.render(ctx)
 	local blocks = state.blocks_for_date(date)
 	local tasks = dooing.tasks_for_date(date_str)
 
+	-- Everything above the hour grid is collected first: it only gets the rows
+	-- the grid does not need, so the whole day always stays on screen.
+	local h0, h1 = cfg.hours.start, cfg.hours["end"]
+	local top = {}
+	local function add(chunks)
+		table.insert(top, chunks)
+	end
+
 	-- Dooing deadline section
 	if #tasks > 0 then
-		push({ { " " .. cfg.icons.dooing .. " Due this day", "BloockyHeader" } })
+		add({ { " " .. cfg.icons.dooing .. " Due this day", "BloockyHeader" } })
 		local max_tasks = 4
 		for i, todo in ipairs(tasks) do
 			if i > max_tasks then
-				push({ { "    +" .. (#tasks - max_tasks) .. " more", "BloockyMore" } })
+				add({ { "    +" .. (#tasks - max_tasks) .. " more", "BloockyMore" } })
 				break
 			end
 			local text = "    " .. cfg.icons.dooing .. " " .. todo.text
@@ -75,15 +83,31 @@ function M.render(ctx)
 			elseif date_str < utils.date_to_str(ctx.today) then
 				grp = "BloockyDooingOverdue"
 			end
-			push({ { utils.truncate(text, ctx.width), grp } })
+			add({ { utils.truncate(text, ctx.width), grp } })
 		end
-		push({ { string.rep("─", ctx.width), "BloockyGrid" } })
+		add({ { string.rep("─", ctx.width), "BloockyGrid" } })
+	end
+
+	-- Trim the top sections down to what is left once every hour has a row
+	local budget = math.max(0, ctx.height - (h1 - h0))
+	if #top > budget then
+		local keep = math.max(0, budget - 1)
+		local hidden = #top - keep
+		for i = #top, keep + 1, -1 do
+			table.remove(top, i)
+		end
+		if budget > 0 then
+			add({ { "    +" .. hidden .. " more above", "BloockyMore" } })
+		end
+	end
+	for _, chunks in ipairs(top) do
+		push(chunks)
 	end
 
 	-- Hour grid
-	local h0, h1 = cfg.hours.start, cfg.hours["end"]
-	for h = h0, h1 - 1 do
-		local row_s, row_e = h * 60, (h + 1) * 60
+	local rows = utils.hour_layout(h0, h1, ctx.height - #lines)
+	for _, row in ipairs(rows) do
+		local row_s, row_e = row.s, row.e
 		local block, n = occ_at(blocks, row_s, row_e)
 		local cell
 		if block then
@@ -115,7 +139,7 @@ function M.render(ctx)
 			cell = { string.rep(" ", cwidth) }
 		end
 		local lnum, spans = push({
-			{ string.format(" %02d:00 ", h), "BloockyTime" },
+			{ row.label, "BloockyTime" },
 			{ "│", "BloockyGrid" },
 			cell,
 		})
@@ -126,7 +150,7 @@ function M.render(ctx)
 		end
 
 		-- Dotted divider between hours; blocks spanning the boundary stay solid
-		if h < h1 - 1 then
+		if row.div then
 			local cont = spanning(blocks, row_e)
 			if cont then
 				push({
