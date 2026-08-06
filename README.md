@@ -1,8 +1,8 @@
 # Bloocky
 
-A timeblocking calendar for Neovim. Plan your day by placing time blocks on a calendar with **day**, **week** and **month** views, navigate everything with `hjkl`, and optionally bring your [dooing](https://github.com/atiladefreitas/dooing) tasks straight onto the calendar.
+A timeblocking calendar for Neovim. Plan your day by placing time blocks on a calendar with **day**, **week** and **month** views, navigate everything with `hjkl`, and optionally bring your [Dooing](https://github.com/atiladefreitas/dooing) tasks straight onto the calendar.
 
-![bloocky.nvim — week view with the day view alongside](docs/overview.png)
+![bloocky — week view with the day view alongside](docs/overview.png)
 
 ---
 
@@ -13,7 +13,7 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
 - 🧱 **Time blocks** — give an action a start time and a duration, and see it spread over the grid as a colored block
 - 🔁 **Recurring blocks** — daily, weekly, weekdays (Mon–Fri) or a custom set of days, with an optional end date
 - 🗨️ **Creation dialog** — a floating form with inline hints; blocks snap to a configurable granularity (30 min by default)
-- ✅ **Dooing integration** — opt-in, read-only: your dooing todos show up on their due date with estimate and priorities, without ever touching dooing's data
+- ✅ **[Dooing](https://github.com/atiladefreitas/dooing) integration** — opt-in, read-only: your [Dooing](https://github.com/atiladefreitas/dooing) todos show up on their due date with estimate and priorities, without ever touching Dooing's data
 - 🕐 **Configurable working hours** — decide which hour your day starts and ends, and whether the week starts on Sunday or Monday
 - 💾 **Automatic persistence** — blocks are saved to a JSON file on every change
 
@@ -30,7 +30,7 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
 
 ```lua
 {
-    "atiladefreitas/bloocky.nvim",
+    "atiladefreitas/bloocky",
     config = function()
         require("bloocky").setup({
             -- your custom config here (optional)
@@ -85,7 +85,7 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
     -- Bring tasks from other plugins into the calendar
     integrations = {
         dooing = {
-            enabled = false,   -- show dooing.nvim todos on their due date
+            enabled = false,   -- show Dooing todos on their due date
             show_done = false, -- also show completed todos
         },
     },
@@ -176,9 +176,9 @@ Invalid fields are marked inline with the reason — fix them and save again.
 
 ---
 
-## ✅ Dooing integration
+## ✅ [Dooing](https://github.com/atiladefreitas/dooing) integration
 
-If you use [dooing](https://github.com/atiladefreitas/dooing), enable the integration to see your todos on the calendar:
+If you use [Dooing](https://github.com/atiladefreitas/dooing), enable the integration to see your todos on the calendar:
 
 ```lua
 require("bloocky").setup({
@@ -190,7 +190,7 @@ require("bloocky").setup({
 })
 ```
 
-Todos with a due date appear on their due day — in the month view as `◆` entries, in the week view as a `due` strip above the grid, and in the day view as a section listing the time estimate and priorities. Overdue todos are highlighted in red. The integration is **read-only**: bloocky never modifies dooing's data.
+Todos with a due date appear on their due day — in the month view as `◆` entries, in the week view as a `due` strip above the grid, and in the day view as a section listing the time estimate and priorities. Overdue todos are highlighted in red. The integration is **read-only**: Bloocky never modifies [Dooing](https://github.com/atiladefreitas/dooing)'s data.
 
 ---
 
