@@ -5,24 +5,62 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace("bloocky_dialog")
 
-local FIELDS = { "Title", "Date", "Start", "Duration", "Repeat", "Days", "Until", "Notes" }
+-- Form layout: "full" and "left" open a new row, "right" joins the previous one
+local LAYOUT = {
+	{ "Title", "full" },
+	{ "Date", "left" },
+	{ "Start", "right" },
+	{ "Duration", "left" },
+	{ "Repeat", "right" },
+	{ "Days", "left" },
+	{ "Until", "right" },
+	{ "Notes", "full" },
+}
 
--- Shown inside the input while it is empty
+-- Shown inside an input while it is empty
 local HINTS = {
 	Title = "what are you blocking time for?",
 	Date = "YYYY-MM-DD",
 	Start = "HH:MM (24h)",
 	Duration = "1h30m · 45m · 2h",
-	Repeat = "none · daily · weekly · weekdays · custom",
-	Days = "custom only — mon,wed,fri",
-	Until = "repeat end date, empty = forever",
+	Repeat = "none · daily · weekly …",
+	Days = "mon,wed,fri",
+	Until = "empty = forever",
 	Notes = "optional",
 }
 
--- Extmark id namespaces: field i keeps its input line at id i,
--- its placeholder at PLACEHOLDER + i and its error at ERROR + i.
-local PLACEHOLDER = 100
-local ERROR = 200
+-- Extmark ids inside each input buffer
+local MARK_HINT = 1
+local MARK_ERROR = 2
+
+local WIDTH = 56
+local PAD = 2
+local GAP = 2
+
+-- Positions of every label/input inside the container, and its height
+local function layout()
+	local inner = WIDTH - PAD * 2
+	local half = math.floor((inner - GAP) / 2)
+	local items, row = {}, 0
+	for _, spec in ipairs(LAYOUT) do
+		local field, slot = spec[1], spec[2]
+		if slot == "right" then
+			local rcol = PAD + half + GAP
+			items[#items + 1] =
+				{ field = field, label_row = row - 3, input_row = row - 2, col = rcol, width = WIDTH - PAD - rcol }
+		else
+			items[#items + 1] = {
+				field = field,
+				label_row = row,
+				input_row = row + 1,
+				col = PAD,
+				width = (slot == "full") and inner or half,
+			}
+			row = row + 3
+		end
+	end
+	return items, row - 1
+end
 
 local function initial_values(opts)
 	local block = opts.block
@@ -87,7 +125,7 @@ local function validate(raw)
 	end
 	local valid_repeat = { none = true, daily = true, weekly = true, weekdays = true, custom = true }
 	if not valid_repeat[rtype] then
-		errs.Repeat = "none · daily · weekly · weekdays · custom"
+		errs.Repeat = "none/daily/weekly/weekdays/custom"
 	end
 
 	local days = nil
@@ -102,7 +140,7 @@ local function validate(raw)
 			end
 		end
 		if #days == 0 and not errs.Days then
-			errs.Days = "needs days, e.g. mon,wed,fri"
+			errs.Days = "e.g. mon,wed,fri"
 		end
 	end
 
@@ -143,165 +181,146 @@ end
 -- Expose for reuse/testing
 M.validate = validate
 
--- Open the block dialog.
--- opts: { block = existing_block? , prefill = { date, start_min }?, on_save = fn(fields) }
+-- Open the block dialog: a container window with one small input window
+-- per field, navigated with Tab / Enter.
+-- opts: { block = existing_block?, prefill = { date, start_min }?, on_save = fn(fields) }
+-- Returns a handle { container, inputs } (used by tests).
 function M.open(opts)
 	local values = initial_values(opts)
+	local items, height = layout()
+	local aug = vim.api.nvim_create_augroup("bloocky_dialog", { clear = true })
 
-	-- One field = label line + input line, separated by a blank line
-	local lines, label_rows = {}, {}
-	for i, field in ipairs(FIELDS) do
-		table.insert(lines, "  " .. field)
-		label_rows[i] = #lines - 1
-		table.insert(lines, values[field] or "")
-		if i < #FIELDS then
-			table.insert(lines, "")
-		end
+	-- Container: labels only, not focusable
+	local clines = {}
+	for i = 1, height do
+		clines[i] = string.rep(" ", WIDTH)
+	end
+	for _, it in ipairs(items) do
+		local l = clines[it.label_row + 1]
+		clines[it.label_row + 1] = l:sub(1, it.col) .. it.field .. l:sub(it.col + #it.field + 1)
 	end
 
-	local width = 56
-	local height = #lines
+	local cbuf = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_buf_set_lines(cbuf, 0, -1, false, clines)
+	vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = cbuf })
+	vim.api.nvim_set_option_value("modifiable", false, { buf = cbuf })
 
-	local buf = vim.api.nvim_create_buf(false, true)
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-	vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
-	vim.api.nvim_set_option_value("filetype", "bloocky_dialog", { buf = buf })
-
-	local win = vim.api.nvim_open_win(buf, true, {
+	local cwin = vim.api.nvim_open_win(cbuf, false, {
 		relative = "editor",
-		width = width,
+		width = WIDTH,
 		height = height,
 		row = math.floor((vim.o.lines - height) / 2) - 1,
-		col = math.floor((vim.o.columns - width) / 2),
+		col = math.floor((vim.o.columns - WIDTH) / 2),
 		style = "minimal",
 		border = config.options.window.border,
 		title = opts.block and "  Edit block " or "  New block ",
 		title_pos = "center",
 		footer = " ⏎ save · ⇥/⇧⇥ move · q cancel ",
 		footer_pos = "center",
+		focusable = false,
 		zindex = 60,
 	})
-
-	-- Labels + input strips. The input extmarks (id = field index) also
-	-- track each field's line through edits, so parsing never relies on
-	-- fixed line numbers.
-	for i, field in ipairs(FIELDS) do
-		local lrow = label_rows[i]
-		vim.api.nvim_buf_set_extmark(buf, ns, lrow, 0, {
-			end_col = #lines[lrow + 1],
+	for _, it in ipairs(items) do
+		vim.api.nvim_buf_set_extmark(cbuf, ns, it.label_row, it.col, {
+			end_col = it.col + #it.field,
 			hl_group = "BloockyHeader",
 			priority = 100,
 		})
-		vim.api.nvim_buf_set_extmark(buf, ns, lrow + 1, 0, {
-			id = i,
-			virt_text = { { "  ▎ ", "BloockyInputBar" } },
-			virt_text_pos = "inline",
-			line_hl_group = "BloockyInput",
-			right_gravity = false,
-		})
 	end
 
-	local function input_row(i)
-		local pos = vim.api.nvim_buf_get_extmark_by_id(buf, ns, i, {})
-		return pos and pos[1] or nil
+	-- One tiny window per field
+	local inputs = {}
+	for i, it in ipairs(items) do
+		local buf = vim.api.nvim_create_buf(false, true)
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { values[it.field] or "" })
+		vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
+		vim.api.nvim_set_option_value("filetype", "bloocky_dialog", { buf = buf })
+
+		local win = vim.api.nvim_open_win(buf, false, {
+			relative = "win",
+			win = cwin,
+			width = it.width,
+			height = 1,
+			row = it.input_row,
+			col = it.col,
+			style = "minimal",
+			border = "none",
+			zindex = 61,
+		})
+		vim.api.nvim_set_option_value("winhighlight", "Normal:BloockyInput", { win = win })
+		inputs[i] = { field = it.field, buf = buf, win = win }
 	end
 
 	local function input_text(i)
-		local row = input_row(i)
-		if not row then
-			return ""
-		end
-		return vim.api.nvim_buf_get_lines(buf, row, row + 1, false)[1] or ""
+		local lines = vim.api.nvim_buf_get_lines(inputs[i].buf, 0, -1, false)
+		return vim.trim(table.concat(lines, " "))
 	end
 
-	-- Placeholder hints on empty inputs
-	local function refresh_placeholders()
-		for i, field in ipairs(FIELDS) do
-			local row = input_row(i)
-			if row then
-				if vim.trim(input_text(i)) == "" then
-					vim.api.nvim_buf_set_extmark(buf, ns, row, 0, {
-						id = PLACEHOLDER + i,
-						virt_text = { { HINTS[field], "BloockyMore" } },
-						virt_text_pos = "eol",
-					})
-				else
-					pcall(vim.api.nvim_buf_del_extmark, buf, ns, PLACEHOLDER + i)
-				end
+	local function refresh_hint(i)
+		local it = inputs[i]
+		if input_text(i) == "" then
+			vim.api.nvim_buf_set_extmark(it.buf, ns, 0, 0, {
+				id = MARK_HINT,
+				virt_text = { { HINTS[it.field], "BloockyMore" } },
+				virt_text_pos = "eol",
+			})
+		else
+			pcall(vim.api.nvim_buf_del_extmark, it.buf, ns, MARK_HINT)
+		end
+	end
+
+	local function clear_error(i)
+		pcall(vim.api.nvim_buf_del_extmark, inputs[i].buf, ns, MARK_ERROR)
+	end
+
+	local closing = false
+	local function close()
+		if closing then
+			return
+		end
+		closing = true
+		vim.cmd("stopinsert")
+		for _, it in ipairs(inputs) do
+			if vim.api.nvim_win_is_valid(it.win) then
+				vim.api.nvim_win_close(it.win, true)
 			end
 		end
-	end
-
-	local function clear_errors()
-		for i = 1, #FIELDS do
-			pcall(vim.api.nvim_buf_del_extmark, buf, ns, ERROR + i)
+		if vim.api.nvim_win_is_valid(cwin) then
+			vim.api.nvim_win_close(cwin, true)
 		end
-	end
-
-	refresh_placeholders()
-	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
-		buffer = buf,
-		callback = function()
-			refresh_placeholders()
-			clear_errors()
-		end,
-	})
-
-	-- Field the cursor is on (nearest input line)
-	local function current_field()
-		local row = vim.api.nvim_win_get_cursor(win)[1] - 1
-		local best, bestd = 1, math.huge
-		for i = 1, #FIELDS do
-			local irow = input_row(i)
-			if irow then
-				local d = math.abs(irow - row)
-				if d < bestd then
-					best, bestd = i, d
-				end
-			end
-		end
-		return best
 	end
 
 	local function goto_field(i, enter_insert)
-		i = math.max(1, math.min(#FIELDS, i))
-		local row = input_row(i)
-		if not row then
+		i = ((i - 1) % #inputs) + 1
+		local it = inputs[i]
+		if not vim.api.nvim_win_is_valid(it.win) then
 			return
 		end
-		vim.api.nvim_win_set_cursor(win, { row + 1, math.max(0, #input_text(i)) })
+		vim.api.nvim_set_current_win(it.win)
+		local line = vim.api.nvim_buf_get_lines(it.buf, 0, 1, false)[1] or ""
+		vim.api.nvim_win_set_cursor(it.win, { 1, math.max(0, #line) })
 		if enter_insert and not vim.api.nvim_get_mode().mode:find("i") then
 			vim.cmd("startinsert!")
 		end
 	end
 
-	local function close()
-		vim.cmd("stopinsert")
-		if vim.api.nvim_win_is_valid(win) then
-			vim.api.nvim_win_close(win, true)
-		end
-	end
-
 	local function save()
-		clear_errors()
 		local raw = {}
-		for i, field in ipairs(FIELDS) do
-			raw[field:lower()] = vim.trim(input_text(i))
+		for i, it in ipairs(inputs) do
+			clear_error(i)
+			raw[it.field:lower()] = input_text(i)
 		end
 		local fields, errs = validate(raw)
 		if not fields then
 			local first = nil
-			for i, field in ipairs(FIELDS) do
-				if errs[field] then
+			for i, it in ipairs(inputs) do
+				if errs[it.field] then
 					first = first or i
-					local row = input_row(i)
-					if row then
-						vim.api.nvim_buf_set_extmark(buf, ns, row, 0, {
-							id = ERROR + i,
-							virt_text = { { "✗ " .. errs[field] .. " ", "BloockyError" } },
-							virt_text_pos = "right_align",
-						})
-					end
+					vim.api.nvim_buf_set_extmark(it.buf, ns, 0, 0, {
+						id = MARK_ERROR,
+						virt_text = { { "✗ " .. errs[it.field] .. " ", "BloockyError" } },
+						virt_text_pos = "right_align",
+					})
 				end
 			end
 			vim.cmd("stopinsert")
@@ -314,61 +333,69 @@ function M.open(opts)
 		opts.on_save(fields)
 	end
 
-	local kopts = { buffer = buf, noremap = true, silent = true, nowait = true }
-	local map = vim.keymap.set
+	-- Keymaps + autocmds per input
+	for i, it in ipairs(inputs) do
+		local kopts = { buffer = it.buf, noremap = true, silent = true, nowait = true }
+		local map = vim.keymap.set
 
-	map("n", "<CR>", save, kopts)
-	map({ "n", "i" }, "<C-s>", save, kopts)
-	map("n", "q", close, kopts)
-	map("n", "<Esc>", close, kopts)
+		map("n", "<CR>", save, kopts)
+		map({ "n", "i" }, "<C-s>", save, kopts)
+		map("n", "q", close, kopts)
+		map("n", "<Esc>", close, kopts)
 
-	-- ⏎ in insert advances through the form and saves from the last field
-	map("i", "<CR>", function()
-		local i = current_field()
-		if i >= #FIELDS then
-			save()
-		else
-			goto_field(i + 1, true)
-		end
-	end, kopts)
-
-	map({ "n", "i" }, "<Tab>", function()
-		goto_field(current_field() + 1, vim.fn.mode():find("i") ~= nil)
-	end, kopts)
-	map({ "n", "i" }, "<S-Tab>", function()
-		goto_field(current_field() - 1, vim.fn.mode():find("i") ~= nil)
-	end, kopts)
-
-	-- Movement jumps between fields instead of raw lines
-	for _, lhs in ipairs({ "j", "<Down>" }) do
-		map("n", lhs, function()
-			goto_field(current_field() + 1, false)
+		-- ⏎ in insert advances through the form and saves from the last field
+		map("i", "<CR>", function()
+			if i == #inputs then
+				save()
+			else
+				goto_field(i + 1, true)
+			end
 		end, kopts)
-	end
-	for _, lhs in ipairs({ "k", "<Up>" }) do
-		map("n", lhs, function()
-			goto_field(current_field() - 1, false)
-		end, kopts)
-	end
-	map("n", "o", function()
-		goto_field(current_field() + 1, true)
-	end, kopts)
-	map("n", "O", function()
-		goto_field(current_field() - 1, true)
-	end, kopts)
 
-	-- dd clears the current field instead of deleting the line
-	map("n", "dd", function()
-		local row = input_row(current_field())
-		if row then
-			vim.api.nvim_buf_set_lines(buf, row, row + 1, false, { "" })
-			refresh_placeholders()
-			clear_errors()
+		map({ "n", "i" }, "<Tab>", function()
+			goto_field(i + 1, vim.api.nvim_get_mode().mode:find("i") ~= nil)
+		end, kopts)
+		map({ "n", "i" }, "<S-Tab>", function()
+			goto_field(i - 1, vim.api.nvim_get_mode().mode:find("i") ~= nil)
+		end, kopts)
+		for _, lhs in ipairs({ "j", "<Down>" }) do
+			map("n", lhs, function()
+				goto_field(i + 1, false)
+			end, kopts)
 		end
-	end, kopts)
+		for _, lhs in ipairs({ "k", "<Up>" }) do
+			map("n", lhs, function()
+				goto_field(i - 1, false)
+			end, kopts)
+		end
+
+		vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+			buffer = it.buf,
+			group = aug,
+			callback = function()
+				refresh_hint(i)
+				clear_error(i)
+			end,
+		})
+		refresh_hint(i)
+	end
+
+	-- Closing any window of the dialog closes all of them
+	for _, w in ipairs({ cwin, unpack(vim.tbl_map(function(it)
+		return it.win
+	end, inputs)) }) do
+		vim.api.nvim_create_autocmd("WinClosed", {
+			pattern = tostring(w),
+			group = aug,
+			once = true,
+			callback = close,
+		})
+	end
 
 	-- Start typing the title right away when creating
 	goto_field(1, not opts.block)
+
+	return { container = cwin, inputs = inputs }
 end
 
 return M
