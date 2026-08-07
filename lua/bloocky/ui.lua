@@ -194,9 +194,16 @@ local function pick_block(blocks, callback)
 	end)
 end
 
+-- The window the dialog should hand focus back to once it closes. Passed
+-- explicitly because vim.ui.select may still own the cursor at that point.
+local function return_win()
+	return is_open() and win or nil
+end
+
 -- Open the creation dialog prefilled with the cursor slot
 function M.add_block()
 	require("bloocky.dialog").open({
+		return_win = return_win(),
 		prefill = {
 			date = utils.date_to_str(M.cursor.date),
 			start_min = (M.view == "month") and 9 * 60 or M.cursor.min,
@@ -215,9 +222,11 @@ function M.edit_block()
 		M.add_block()
 		return
 	end
+	local back = return_win()
 	pick_block(blocks, function(block)
 		require("bloocky.dialog").open({
 			block = block,
+			return_win = back,
 			on_save = function(fields)
 				state.update_block(block.id, fields)
 				M.render()

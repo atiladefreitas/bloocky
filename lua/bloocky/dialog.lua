@@ -190,6 +190,10 @@ function M.open(opts)
 	local items, height = layout()
 	local aug = vim.api.nvim_create_augroup("bloocky_dialog", { clear = true })
 
+	-- Where the dialog was opened from, so closing it hands focus back there
+	-- instead of leaving it wherever Neovim happens to drop the cursor
+	local prev_win = opts.return_win or vim.api.nvim_get_current_win()
+
 	-- Container: labels only, not focusable
 	local clines = {}
 	for i = 1, height do
@@ -288,6 +292,13 @@ function M.open(opts)
 		if vim.api.nvim_win_is_valid(cwin) then
 			vim.api.nvim_win_close(cwin, true)
 		end
+		-- Deferred: close() also runs from WinClosed, where switching windows
+		-- mid-teardown is unsafe
+		vim.schedule(function()
+			if vim.api.nvim_win_is_valid(prev_win) then
+				pcall(vim.api.nvim_set_current_win, prev_win)
+			end
+		end)
 	end
 
 	local function goto_field(i, enter_insert)
