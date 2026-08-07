@@ -16,6 +16,7 @@ local buf, win = nil, nil
 local ns = vim.api.nvim_create_namespace("bloocky")
 
 M.view = nil
+M.mode = nil -- "float" | "sidebar"
 M.cursor = nil -- { date = { year, month, day }, min = minutes from midnight }
 
 local function is_open()
@@ -23,7 +24,25 @@ local function is_open()
 end
 M.is_open = is_open
 
+local function sidebar_options()
+	return config.options.window.sidebar or {}
+end
+
+-- Columns the sidebar split asks for
+local function sidebar_width()
+	local w = sidebar_options().width or 46
+	if w <= 1 then
+		w = vim.o.columns * w
+	end
+	return math.floor(math.max(20, math.min(w, vim.o.columns - 4)))
+end
+
 local function content_width()
+	if M.mode == "sidebar" then
+		-- The split may have been resized by hand, so trust the window itself
+		return is_open() and vim.api.nvim_win_get_width(win) or sidebar_width()
+	end
+
 	local w = config.options.window.width
 	if type(w) == "table" then
 		w = w[M.view]
@@ -47,6 +66,11 @@ end
 -- Rows usable for content: the editor minus the command line and the border,
 -- keeping one spare row so the window never sits flush against the cmdline.
 local function max_height()
+	if M.mode == "sidebar" then
+		local h = is_open() and vim.api.nvim_win_get_height(win) or (vim.o.lines - vim.o.cmdheight - 2)
+		-- The winbar carries the title and takes a row out of the window
+		return math.max(6, h - 1)
+	end
 	return math.max(6, vim.o.lines - vim.o.cmdheight - border_rows() - 1)
 end
 
@@ -90,22 +114,28 @@ function M.render()
 	}
 	local lines, hls, meta = views[M.view].render(ctx)
 
-	local width = meta.width or ctx.width
-	local height = math.min(#lines, ctx.height)
-	-- Centre inside the rows the editor actually offers, border included
-	local usable = vim.o.lines - vim.o.cmdheight
-	local row = math.floor((usable - (height + border_rows())) / 2)
-	vim.api.nvim_win_set_config(win, {
-		relative = "editor",
-		width = width,
-		height = height,
-		row = math.max(0, row),
-		col = math.max(0, math.floor((vim.o.columns - width) / 2)),
-		title = meta.title or " Bloocky ",
-		title_pos = "center",
-		footer = footer_text(width),
-		footer_pos = "center",
-	})
+	if M.mode == "sidebar" then
+		-- A split cannot carry a title, so the winbar stands in for it
+		local title = (meta.title or " Bloocky "):gsub("%%", "%%%%")
+		vim.api.nvim_set_option_value("winbar", "%=" .. title .. "%=", { win = win })
+	else
+		local width = meta.width or ctx.width
+		local height = math.min(#lines, ctx.height)
+		-- Centre inside the rows the editor actually offers, border included
+		local usable = vim.o.lines - vim.o.cmdheight
+		local row = math.floor((usable - (height + border_rows())) / 2)
+		vim.api.nvim_win_set_config(win, {
+			relative = "editor",
+			width = width,
+			height = height,
+			row = math.max(0, row),
+			col = math.max(0, math.floor((vim.o.columns - width) / 2)),
+			title = meta.title or " Bloocky ",
+			title_pos = "center",
+			footer = footer_text(width),
+			footer_pos = "center",
+		})
+	end
 
 	vim.api.nvim_set_option_value("modifiable", true, { buf = buf })
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -314,35 +344,13 @@ local function setup_keymaps()
 	map(km.edit, M.edit_block)
 	map(km.delete, M.delete_block)
 	map(km.close, M.close)
-	map("<Esc>", M.close)
+	if M.mode ~= "sidebar" then
+		-- In a sidebar <Esc> is far too eager: it is a window you keep around
+		map("<Esc>", M.close)
+	end
 end
 
--- Open the calendar (optionally forcing a view)
-function M.open(view)
-	highlights.setup()
-	state.ensure_loaded()
-
-	if is_open() then
-		if view and views[view] then
-			M.view = view
-		end
-		vim.api.nvim_set_current_win(win)
-		M.render()
-		return
-	end
-
-	M.view = view or config.options.default_view
-	if not views[M.view] then
-		M.view = "week"
-	end
-
-	local now = os.date("*t")
-	M.cursor = { date = utils.today(), min = now.hour * 60 }
-
-	buf = vim.api.nvim_create_buf(false, true)
-	vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
-	vim.api.nvim_set_option_value("filetype", "bloocky", { buf = buf })
-
+local function open_float()
 	win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
 		width = 20,
@@ -357,6 +365,93 @@ function M.open(view)
 	})
 	vim.api.nvim_set_option_value("cursorline", false, { win = win })
 	vim.api.nvim_set_option_value("wrap", false, { win = win })
+end
+
+local function open_sidebar()
+	-- A split cannot be opened from a floating window, so step out of one first
+	if vim.api.nvim_win_get_config(0).relative ~= "" then
+		for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+			if vim.api.nvim_win_get_config(w).relative == "" then
+				vim.api.nvim_set_current_win(w)
+				break
+			end
+		end
+	end
+
+	local side = sidebar_options().position == "left" and "topleft" or "botright"
+	vim.cmd(side .. " vsplit")
+	win = vim.api.nvim_get_current_win()
+	vim.api.nvim_win_set_buf(win, buf)
+	vim.api.nvim_win_set_width(win, sidebar_width())
+
+	for name, value in pairs({
+		cursorline = false,
+		wrap = false,
+		number = false,
+		relativenumber = false,
+		list = false,
+		spell = false,
+		signcolumn = "no",
+		foldcolumn = "0",
+		statuscolumn = "",
+		winfixwidth = true,
+	}) do
+		vim.api.nvim_set_option_value(name, value, { win = win, scope = "local" })
+	end
+end
+
+-- Normalise the public argument: a view name, or { view = ..., mode = ... }
+local function normalize(opts)
+	if type(opts) == "string" then
+		return { view = opts }
+	end
+	return opts or {}
+end
+
+-- Open the calendar (optionally forcing a view and/or a window mode)
+function M.open(opts)
+	opts = normalize(opts)
+	highlights.setup()
+	state.ensure_loaded()
+
+	local mode = opts.mode or (is_open() and M.mode) or config.options.window.mode or "float"
+	if mode ~= "sidebar" then
+		mode = "float"
+	end
+
+	local keep_cursor, keep_view = nil, nil
+	if is_open() then
+		if mode == M.mode then
+			if opts.view and views[opts.view] then
+				M.view = opts.view
+			end
+			vim.api.nvim_set_current_win(win)
+			M.render()
+			return
+		end
+		-- Switching mode rebuilds the window, so carry the cursor and view across
+		keep_cursor, keep_view = M.cursor, M.view
+		M.close()
+	end
+
+	M.mode = mode
+	M.view = opts.view or keep_view or (mode == "sidebar" and sidebar_options().view) or config.options.default_view
+	if not views[M.view] then
+		M.view = "week"
+	end
+
+	local now = os.date("*t")
+	M.cursor = keep_cursor or { date = utils.today(), min = now.hour * 60 }
+
+	buf = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
+	vim.api.nvim_set_option_value("filetype", "bloocky", { buf = buf })
+
+	if mode == "sidebar" then
+		open_sidebar()
+	else
+		open_float()
+	end
 
 	setup_keymaps()
 
@@ -376,27 +471,61 @@ function M.open(view)
 			if not is_open() then
 				return true
 			end
+			if M.mode == "sidebar" then
+				pcall(vim.api.nvim_win_set_width, win, sidebar_width())
+			end
 			M.render()
 		end,
 	})
 
+	if mode == "sidebar" then
+		-- WinResized is matched against window IDs, so it cannot be buffer-local:
+		-- watch globally and drop out once the sidebar is gone
+		local last_w, last_h
+		vim.api.nvim_create_autocmd("WinResized", {
+			callback = function()
+				if not is_open() then
+					return true
+				end
+				local w, h = vim.api.nvim_win_get_width(win), vim.api.nvim_win_get_height(win)
+				if w ~= last_w or h ~= last_h then
+					last_w, last_h = w, h
+					M.render()
+				end
+			end,
+		})
+	end
+
 	M.render()
+end
+
+function M.open_sidebar(view)
+	M.open({ view = view or sidebar_options().view, mode = "sidebar" })
 end
 
 function M.close()
 	if is_open() then
-		vim.api.nvim_win_close(win, true)
+		-- Closing the last window of a tab is refused; drop the buffer instead
+		if not pcall(vim.api.nvim_win_close, win, true) then
+			pcall(vim.api.nvim_buf_delete, buf, { force = true })
+		end
 	end
 	win = nil
 	buf = nil
 end
 
-function M.toggle(view)
-	if is_open() then
+-- Close when the calendar already shows what was asked for, open otherwise
+function M.toggle(opts)
+	opts = normalize(opts)
+	if is_open() and (not opts.mode or opts.mode == M.mode) then
 		M.close()
 	else
-		M.open(view)
+		M.open(opts)
 	end
+end
+
+function M.toggle_sidebar(view)
+	M.toggle({ view = view or sidebar_options().view, mode = "sidebar" })
 end
 
 return M

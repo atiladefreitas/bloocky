@@ -5,3 +5,5 @@ let g:loaded_bloocky = 1
 
 command! -nargs=? Bloocky lua require('bloocky').open(<f-args>)
 command! -nargs=0 BloockyToggle lua require('bloocky').toggle()
+command! -nargs=? BloockySidebar lua require('bloocky').open_sidebar(<f-args>)
+command! -nargs=? BloockySidebarToggle lua require('bloocky').toggle_sidebar(<f-args>)

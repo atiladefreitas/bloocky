@@ -10,6 +10,7 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
 
 - 📅 **Three views** — full month calendar, week grid with hour rows, and a detailed day view
 - 🧭 **`hjkl` navigation** — move across days and hours; `H`/`L` jump a whole month or week
+- 🪟 **Float or sidebar** — a centered floating window by default, or a persistent split you keep open next to your code while you work
 - 🧱 **Time blocks** — give an action a start time and a duration, and see it spread over the grid as a colored block
 - 🔁 **Recurring blocks** — daily, weekly, weekdays (Mon–Fri) or a custom set of days, with an optional end date
 - 🗨️ **Creation dialog** — a floating form with inline hints; blocks snap to a configurable granularity (30 min by default)
@@ -66,14 +67,24 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
     granularity = 30,
 
     window = {
+        -- How the calendar is displayed: "float" | "sidebar"
+        mode = "float",
+
         -- Width per view: fraction of the editor width (or absolute columns if > 1).
-        -- A single number applies to every view.
+        -- A single number applies to every view. Floating mode only.
         width = {
             month = 0.8,
             week = 0.6,
             day = 46,
         },
         border = "rounded",
+
+        -- Used when the calendar opens as a sidebar (a regular vertical split)
+        sidebar = {
+            position = "right", -- "left" | "right"
+            width = 46,         -- columns (or a fraction of the editor width if <= 1)
+            view = "day",       -- view the sidebar opens in
+        },
     },
 
     icons = {
@@ -93,6 +104,7 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
     keymaps = {
         -- Global
         toggle = "<leader>tb",
+        toggle_sidebar = "<leader>tB",
 
         -- Inside the calendar window
         calendar = {
@@ -122,9 +134,10 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
 
 ### Global
 
-| Key          | Action              |
-| ------------ | ------------------- |
-| `<leader>tb` | Toggle the calendar |
+| Key          | Action                                       |
+| ------------ | -------------------------------------------- |
+| `<leader>tb` | Toggle the calendar                          |
+| `<leader>tB` | Toggle the calendar as a sidebar in day view |
 
 ### Inside the calendar
 
@@ -139,7 +152,7 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
 | `a`            | Create a block at the cursor slot                   |
 | `<CR>`         | Edit the block under the cursor (or create one)     |
 | `x`            | Delete the block under the cursor                   |
-| `q` / `<Esc>`  | Close the calendar                                  |
+| `q` / `<Esc>`  | Close the calendar (`<Esc>` in floating mode only)  |
 
 ### Inside the block dialog
 
@@ -161,6 +174,8 @@ Invalid fields are marked inline with the reason — fix them and save again.
 
 - `:Bloocky [day|week|month]` — open the calendar (optionally in a specific view)
 - `:BloockyToggle` — toggle the calendar
+- `:BloockySidebar [day|week|month]` — open the calendar as a sidebar
+- `:BloockySidebarToggle [day|week|month]` — toggle the sidebar
 - `:BloockyAdd` — open the calendar and jump straight into the creation dialog
 
 ---
@@ -204,6 +219,32 @@ require("bloocky").setup({
     hours = { start = 8, ["end"] = 18 },
 })
 ```
+
+### Float or sidebar
+
+By default the calendar opens as a centered floating window. `<leader>tB` opens it instead as a **sidebar** — a regular vertical split, in day view, that stays put while you work in the other windows:
+
+```lua
+require("bloocky").setup({
+    window = {
+        sidebar = {
+            position = "left", -- put it on the left instead
+            width = 0.25,      -- a quarter of the editor (or pass columns, e.g. 46)
+            view = "week",     -- open the sidebar in week view
+        },
+    },
+})
+```
+
+To make the sidebar the default for `<leader>tb` and `:Bloocky` as well, set the mode:
+
+```lua
+require("bloocky").setup({
+    window = { mode = "sidebar" },
+})
+```
+
+Both modes share the same keymaps, cursor and views, so you can switch between them at any time — `<leader>tB` from an open float moves the calendar into the sidebar without losing your place. The sidebar puts its title in the winbar, respects a width you resize by hand, and does not bind `<Esc>` to close.
 
 ### Highlight groups
 

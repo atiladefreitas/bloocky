@@ -21,21 +21,46 @@ function M.setup(opts)
 			require("bloocky.ui").toggle()
 		end, { noremap = true, silent = true, desc = "Bloocky: toggle calendar" })
 	end
+	if keymaps.toggle_sidebar then
+		vim.keymap.set("n", keymaps.toggle_sidebar, function()
+			require("bloocky.ui").toggle_sidebar()
+		end, { noremap = true, silent = true, desc = "Bloocky: toggle calendar sidebar" })
+	end
+
+	local views = function()
+		return { "day", "week", "month" }
+	end
 
 	vim.api.nvim_create_user_command("Bloocky", function(cmd)
 		local view = cmd.args ~= "" and cmd.args or nil
 		require("bloocky.ui").open(view)
 	end, {
 		nargs = "?",
-		complete = function()
-			return { "day", "week", "month" }
-		end,
+		complete = views,
 		desc = "Open the Bloocky calendar",
 	})
 
 	vim.api.nvim_create_user_command("BloockyToggle", function()
 		require("bloocky.ui").toggle()
 	end, { desc = "Toggle the Bloocky calendar" })
+
+	vim.api.nvim_create_user_command("BloockySidebar", function(cmd)
+		local view = cmd.args ~= "" and cmd.args or nil
+		require("bloocky.ui").open_sidebar(view)
+	end, {
+		nargs = "?",
+		complete = views,
+		desc = "Open the Bloocky calendar as a sidebar",
+	})
+
+	vim.api.nvim_create_user_command("BloockySidebarToggle", function(cmd)
+		local view = cmd.args ~= "" and cmd.args or nil
+		require("bloocky.ui").toggle_sidebar(view)
+	end, {
+		nargs = "?",
+		complete = views,
+		desc = "Toggle the Bloocky calendar sidebar",
+	})
 
 	vim.api.nvim_create_user_command("BloockyAdd", function()
 		local ui = require("bloocky.ui")
@@ -44,12 +69,21 @@ function M.setup(opts)
 	end, { desc = "Create a new time block" })
 end
 
-function M.open(view)
-	require("bloocky.ui").open(view)
+-- `opts` is a view name, or { view = "day"|"week"|"month", mode = "float"|"sidebar" }
+function M.open(opts)
+	require("bloocky.ui").open(opts)
 end
 
-function M.toggle(view)
-	require("bloocky.ui").toggle(view)
+function M.toggle(opts)
+	require("bloocky.ui").toggle(opts)
+end
+
+function M.open_sidebar(view)
+	require("bloocky.ui").open_sidebar(view)
+end
+
+function M.toggle_sidebar(view)
+	require("bloocky.ui").toggle_sidebar(view)
 end
 
 function M.close()

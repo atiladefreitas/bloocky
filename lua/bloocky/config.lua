@@ -20,14 +20,24 @@ M.options = {
 	granularity = 30,
 
 	window = {
+		-- How the calendar is displayed: "float" | "sidebar"
+		mode = "float",
+
 		-- Width per view: fraction of the editor width (or absolute columns if > 1).
-		-- A single number applies to every view.
+		-- A single number applies to every view. Floating mode only.
 		width = {
 			month = 0.8,
 			week = 0.6,
 			day = 46,
 		},
 		border = "rounded",
+
+		-- Used when the calendar opens as a sidebar (a regular vertical split)
+		sidebar = {
+			position = "right", -- "left" | "right"
+			width = 46, -- columns (or a fraction of the editor width if <= 1)
+			view = "day", -- view the sidebar opens in
+		},
 	},
 
 	icons = {
@@ -47,6 +57,7 @@ M.options = {
 	keymaps = {
 		-- Global
 		toggle = "<leader>tb",
+		toggle_sidebar = "<leader>tB",
 
 		-- Inside the calendar window
 		calendar = {
