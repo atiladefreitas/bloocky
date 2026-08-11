@@ -37,30 +37,38 @@ local function sidebar_width()
 	return math.floor(math.max(20, math.min(w, vim.o.columns - 4)))
 end
 
+-- A size option is either a single value or one value per view
+local function per_view(value)
+	if type(value) == "table" then
+		return value[M.view]
+	end
+	return value
+end
+
+-- Cells the border steals from the editor (title and footer live in it)
+local function border_cells()
+	local b = config.options.window.border
+	if not b or b == "none" or b == "shadow" then
+		return 0
+	end
+	return 2
+end
+
 local function content_width()
 	if M.mode == "sidebar" then
 		-- The split may have been resized by hand, so trust the window itself
 		return is_open() and vim.api.nvim_win_get_width(win) or sidebar_width()
 	end
 
-	local w = config.options.window.width
-	if type(w) == "table" then
-		w = w[M.view]
+	local usable = math.max(20, vim.o.columns - border_cells())
+	local w = per_view(config.options.window.width) or 0.8
+	if w == "full" then
+		return usable
 	end
-	w = w or 0.8
 	if w > 1 then
-		return math.floor(math.min(w, vim.o.columns - 4))
+		return math.floor(math.min(w, usable))
 	end
-	return math.floor(vim.o.columns * w)
-end
-
--- Rows the border steals from the editor (title and footer live in it)
-local function border_rows()
-	local b = config.options.window.border
-	if not b or b == "none" or b == "shadow" then
-		return 0
-	end
-	return 2
+	return math.floor(math.min(vim.o.columns * w, usable))
 end
 
 -- Rows usable for content: the editor minus the command line and the border,
@@ -71,7 +79,23 @@ local function max_height()
 		-- The winbar carries the title and takes a row out of the window
 		return math.max(6, h - 1)
 	end
-	return math.max(6, vim.o.lines - vim.o.cmdheight - border_rows() - 1)
+	return math.max(6, vim.o.lines - vim.o.cmdheight - border_cells() - 1)
+end
+
+-- Rows the view is laid out in, and whether it should stretch to cover them.
+-- "auto" lets the view stay compact inside everything on offer, anything else
+-- pins a height the view fills exactly.
+local function target_height()
+	local max = max_height()
+	local h = per_view(config.options.window.height) or "auto"
+	if h == "full" then
+		return max, true
+	end
+	if type(h) == "number" then
+		local want = (h > 1) and h or ((vim.o.lines - vim.o.cmdheight) * h)
+		return math.max(6, math.min(math.floor(want), max)), true
+	end
+	return max, false
 end
 
 local function clamp_cursor()
@@ -105,9 +129,11 @@ function M.render()
 	end
 	clamp_cursor()
 
+	local height, fill = target_height()
 	local ctx = {
 		width = content_width(),
-		height = max_height(),
+		height = height,
+		fill = fill,
 		cursor = M.cursor,
 		today = utils.today(),
 		config = config.options,
@@ -120,14 +146,14 @@ function M.render()
 		vim.api.nvim_set_option_value("winbar", "%=" .. title .. "%=", { win = win })
 	else
 		local width = meta.width or ctx.width
-		local height = math.min(#lines, ctx.height)
+		local rows = math.min(#lines, ctx.height)
 		-- Centre inside the rows the editor actually offers, border included
 		local usable = vim.o.lines - vim.o.cmdheight
-		local row = math.floor((usable - (height + border_rows())) / 2)
+		local row = math.floor((usable - (rows + border_cells())) / 2)
 		vim.api.nvim_win_set_config(win, {
 			relative = "editor",
 			width = width,
-			height = height,
+			height = rows,
 			row = math.max(0, row),
 			col = math.max(0, math.floor((vim.o.columns - width) / 2)),
 			title = meta.title or " Bloocky ",

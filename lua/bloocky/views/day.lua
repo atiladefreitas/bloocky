@@ -105,7 +105,7 @@ function M.render(ctx)
 	end
 
 	-- Hour grid
-	local rows = utils.hour_layout(h0, h1, ctx.height - #lines)
+	local rows = utils.hour_layout(h0, h1, ctx.height - #lines, ctx.fill)
 	for _, row in ipairs(rows) do
 		local row_s, row_e = row.s, row.e
 		local block, n = occ_at(blocks, row_s, row_e)
@@ -138,15 +138,25 @@ function M.render(ctx)
 		else
 			cell = { string.rep(" ", cwidth) }
 		end
-		local lnum, spans = push({
-			{ row.label, "BloockyTime" },
-			{ "│", "BloockyGrid" },
-			cell,
-		})
-		if ctx.cursor.min >= row_s and ctx.cursor.min < row_e then
-			local span = spans[3]
-			table.insert(hls, { line = lnum, s = span.s, e = span.e, group = "BloockyCursor", prio = 200 })
-			meta.cursor_line = lnum + 1
+		-- A tall slot keeps its label on the first line; the rest carries the
+		-- block's colour on so it reads as one bar
+		local on_cursor = ctx.cursor.min >= row_s and ctx.cursor.min < row_e
+		for r = 1, row.lines do
+			local body = cell
+			if r > 1 then
+				body = block and { string.rep(" ", cwidth), highlights.block_group(block), 100 }
+					or { string.rep(" ", cwidth) }
+			end
+			local lnum, spans = push({
+				{ (r == 1) and row.label or string.rep(" ", gutter - 1), (r == 1) and "BloockyTime" or nil },
+				{ "│", "BloockyGrid" },
+				body,
+			})
+			if on_cursor then
+				local span = spans[3]
+				table.insert(hls, { line = lnum, s = span.s, e = span.e, group = "BloockyCursor", prio = 200 })
+				meta.cursor_line = meta.cursor_line or (lnum + 1)
+			end
 		end
 
 		-- Dotted divider between hours; blocks spanning the boundary stay solid

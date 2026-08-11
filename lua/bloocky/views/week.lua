@@ -32,9 +32,14 @@ end
 function M.render(ctx)
 	local cfg = ctx.config
 	local gutter = 7
-	-- Each day column is preceded by a "│" separator
-	local cw = math.floor((ctx.width - gutter - 7) / 7)
-	local width = gutter + (1 + cw) * 7
+	-- Each day column is preceded by a "│" separator. Filling spends the cells
+	-- that do not divide evenly on the columns instead of dropping them.
+	local inner = math.max(7, ctx.width - gutter - 7)
+	local cws = utils.share(ctx.fill and inner or (math.floor(inner / 7) * 7), 7)
+	local width = gutter + 7
+	for _, c in ipairs(cws) do
+		width = width + c
+	end
 
 	local lines, hls = {}, {}
 	local meta = { width = width }
@@ -59,14 +64,14 @@ function M.render(ctx)
 
 	-- Day header
 	local header = { { string.rep(" ", gutter) } }
-	for _, d in ipairs(days) do
+	for i, d in ipairs(days) do
 		local label = utils.WDAYS_SHORT[utils.wday(d)] .. " " .. string.format("%02d", d.day)
 		local grp = "BloockyHeader"
 		if utils.same_day(d, ctx.today) then
 			grp = "BloockyToday"
 		end
 		table.insert(header, { "│", "BloockyGrid" })
-		table.insert(header, { utils.center(label, cw), grp })
+		table.insert(header, { utils.center(label, cws[i]), grp })
 	end
 	local header_lnum, header_spans = push(header)
 	for i, d in ipairs(days) do
@@ -94,17 +99,17 @@ function M.render(ctx)
 				if #due[i] > 1 then
 					text = cfg.icons.dooing .. "×" .. #due[i] .. " " .. due[i][1].text
 				end
-				table.insert(chunks, { utils.fit(text, cw), "BloockyDooing" })
+				table.insert(chunks, { utils.fit(text, cws[i]), "BloockyDooing" })
 			else
-				table.insert(chunks, { string.rep(" ", cw) })
+				table.insert(chunks, { string.rep(" ", cws[i]) })
 			end
 		end
 		push(chunks)
 	end
 
 	local rule = { { string.rep("─", gutter), "BloockyGrid" } }
-	for _ = 1, 7 do
-		table.insert(rule, { "┼" .. string.rep("─", cw), "BloockyGrid" })
+	for i = 1, 7 do
+		table.insert(rule, { "┼" .. string.rep("─", cws[i]), "BloockyGrid" })
 	end
 	push(rule)
 
@@ -123,14 +128,16 @@ function M.render(ctx)
 	-- Whatever the header and strips did not use goes to the hour grid, which
 	-- always shows every hour — grouping them if the window is short
 	local h0, h1 = cfg.hours.start, cfg.hours["end"]
-	for _, row in ipairs(utils.hour_layout(h0, h1, ctx.height - #lines)) do
+	for _, row in ipairs(utils.hour_layout(h0, h1, ctx.height - #lines, ctx.fill)) do
 		local row_s, row_e = row.s, row.e
-		local chunks = { { row.label, "BloockyTime" } }
+
+		-- The cell of every day for this slot, laid out once and reused by the
+		-- lines the slot spans (only the first one carries the block's text)
+		local cells = {}
 		for i in ipairs(days) do
-			table.insert(chunks, { "│", "BloockyGrid" })
 			local block, n = occ_at(occ[i], row_s, row_e)
+			local text
 			if block then
-				local text
 				if block.start_min >= row_s then
 					text = cfg.icons.block .. utils.format_hhmm(block.start_min) .. " " .. block.title
 					if block.recurrence then
@@ -140,20 +147,35 @@ function M.render(ctx)
 					text = cfg.icons.block
 				end
 				if n > 1 then
-					text = utils.fit(text, cw - 2) .. "+ "
+					text = utils.fit(text, cws[i] - 2) .. "+ "
 				else
-					text = utils.fit(text, cw)
+					text = utils.fit(text, cws[i])
 				end
-				table.insert(chunks, { text, highlights.block_group(block), 100 })
-			else
-				table.insert(chunks, { string.rep(" ", cw) })
 			end
+			cells[i] = { block = block, text = text }
 		end
-		local lnum, spans = push(chunks)
-		if cursor_col and ctx.cursor.min >= row_s and ctx.cursor.min < row_e then
-			local span = spans[2 * cursor_col + 1]
-			table.insert(hls, { line = lnum, s = span.s, e = span.e, group = "BloockyCursor", prio = 200 })
-			meta.cursor_line = lnum + 1
+
+		local on_cursor = cursor_col and ctx.cursor.min >= row_s and ctx.cursor.min < row_e
+		for r = 1, row.lines do
+			local chunks = {
+				{ (r == 1) and row.label or string.rep(" ", gutter), (r == 1) and "BloockyTime" or nil },
+			}
+			for i in ipairs(days) do
+				table.insert(chunks, { "│", "BloockyGrid" })
+				local cell = cells[i]
+				if cell.block then
+					local text = (r == 1) and cell.text or string.rep(" ", cws[i])
+					table.insert(chunks, { text, highlights.block_group(cell.block), 100 })
+				else
+					table.insert(chunks, { string.rep(" ", cws[i]) })
+				end
+			end
+			local lnum, spans = push(chunks)
+			if on_cursor then
+				local span = spans[2 * cursor_col + 1]
+				table.insert(hls, { line = lnum, s = span.s, e = span.e, group = "BloockyCursor", prio = 200 })
+				meta.cursor_line = meta.cursor_line or (lnum + 1)
+			end
 		end
 
 		-- Dotted divider between hours; blocks spanning the boundary stay solid
@@ -164,9 +186,9 @@ function M.render(ctx)
 				table.insert(div, { "│", "BloockyGrid" })
 				local cont = spanning(occ[i], bmin)
 				if cont then
-					table.insert(div, { string.rep(" ", cw), highlights.block_group(cont), 100 })
+					table.insert(div, { string.rep(" ", cws[i]), highlights.block_group(cont), 100 })
 				else
-					table.insert(div, { string.rep("┄", cw), "BloockyGrid" })
+					table.insert(div, { string.rep("┄", cws[i]), "BloockyGrid" })
 				end
 			end
 			push(div)

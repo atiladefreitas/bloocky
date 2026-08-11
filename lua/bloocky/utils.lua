@@ -174,22 +174,32 @@ end
 -- Fit the hours [h0, h1) into `avail` lines so the whole day is always visible.
 -- Roomy: one line per hour plus a divider between them. Tighter: drop the
 -- dividers. Tighter still: group several hours onto one line.
--- Returns rows of { s, e, label, div } — minutes covered, gutter label, and
--- whether a divider line follows.
-function M.hour_layout(h0, h1, avail)
+-- With `fill`, the rows left over are handed back to the slots so the grid
+-- spans exactly `avail` lines instead of stopping short.
+-- Returns rows of { s, e, label, lines, div } — minutes covered, gutter label,
+-- how many lines the slot takes, and whether a divider line follows.
+function M.hour_layout(h0, h1, avail, fill)
 	local hours = math.max(1, h1 - h0)
 	avail = math.max(1, avail)
 	local step = math.max(1, math.ceil(hours / avail))
 	local rows = math.ceil(hours / step)
 	local dividers = rows * 2 - 1 <= avail
 
-	local out, h = {}, h0
+	local heights
+	if fill then
+		local spare = avail - (dividers and (rows * 2 - 1) or rows)
+		heights = M.share(rows + math.max(0, spare), rows)
+	end
+
+	local out, h, i = {}, h0, 0
 	while h < h1 do
 		local e = math.min(h + step, h1)
+		i = i + 1
 		table.insert(out, {
 			s = h * 60,
 			e = e * 60,
 			label = (e - h == 1) and string.format(" %02d:00 ", h) or string.format(" %02d-%02d ", h, e),
+			lines = heights and heights[i] or 1,
 			div = dividers and e < h1,
 		})
 		h = e
@@ -203,6 +213,19 @@ end
 
 function M.dw(s)
 	return vim.fn.strdisplaywidth(s)
+end
+
+-- Split `total` cells over `n` parts. What does not divide evenly is spread
+-- across the parts instead of piling up at the end, so a grid built from them
+-- covers `total` exactly while staying visually regular.
+function M.share(total, n)
+	local base = math.floor(total / n)
+	local rem = total - base * n
+	local out = {}
+	for i = 1, n do
+		out[i] = base + (math.floor(i * rem / n) - math.floor((i - 1) * rem / n))
+	end
+	return out
 end
 
 function M.truncate(s, width)

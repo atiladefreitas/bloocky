@@ -11,6 +11,7 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
 - 📅 **Three views** — full month calendar, week grid with hour rows, and a detailed day view
 - 🧭 **`hjkl` navigation** — move across days and hours; `H`/`L` jump a whole month or week
 - 🪟 **Float or sidebar** — a centered floating window by default, or a persistent split you keep open next to your code while you work
+- 🖥️ **Sized how you like it** — per-view width and height, up to `"full"` for a calendar that fills the whole editor
 - 🧱 **Time blocks** — give an action a start time and a duration, and see it spread over the grid as a colored block
 - 🔁 **Recurring blocks** — daily, weekly, weekdays (Mon–Fri) or a custom set of days, with an optional end date
 - 🗨️ **Creation dialog** — a floating form with inline hints; blocks snap to a configurable granularity (30 min by default)
@@ -70,13 +71,21 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
         -- How the calendar is displayed: "float" | "sidebar"
         mode = "float",
 
-        -- Width per view: fraction of the editor width (or absolute columns if > 1).
-        -- A single number applies to every view. Floating mode only.
+        -- Width per view: fraction of the editor width (or absolute columns if > 1),
+        -- or "full" for everything the editor has. A single value applies to
+        -- every view. Floating mode only.
         width = {
             month = 0.8,
             week = 0.6,
             day = 46,
         },
+
+        -- Height per view: "auto" fits the window to its content, "full" takes
+        -- every row available, a number is a fraction of the editor height (or
+        -- absolute rows if > 1). Anything but "auto" stretches the grid to fill
+        -- the window. A single value applies to every view.
+        height = "auto",
+
         border = "rounded",
 
         -- Used when the calendar opens as a sidebar (a regular vertical split)
@@ -219,6 +228,34 @@ require("bloocky").setup({
     hours = { start = 8, ["end"] = 18 },
 })
 ```
+
+### Full screen
+
+To give every view the whole editor, set both sizes to `"full"`:
+
+```lua
+require("bloocky").setup({
+    window = {
+        width = "full",
+        height = "full",
+    },
+})
+```
+
+The grid stretches to match: hour slots grow taller instead of leaving the bottom of the window empty, month cells take the spare rows, and the columns share out the cells that do not divide evenly, so the day/week/month grids cover the window exactly.
+
+Both accept a value per view, so you can single out one of them:
+
+```lua
+require("bloocky").setup({
+    window = {
+        width = { month = "full", week = "full", day = 46 },
+        height = { month = "full", week = "full", day = "auto" },
+    },
+})
+```
+
+`height = "auto"` (the default) keeps the floating window as tall as its content. A number works like `width`: a fraction of the editor, or absolute rows above `1`. In sidebar mode the split already spans the full height — `height = "full"` there just stretches the grid down to fill it.
 
 ### Float or sidebar
 

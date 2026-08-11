@@ -23,13 +23,21 @@ M.options = {
 		-- How the calendar is displayed: "float" | "sidebar"
 		mode = "float",
 
-		-- Width per view: fraction of the editor width (or absolute columns if > 1).
-		-- A single number applies to every view. Floating mode only.
+		-- Width per view: fraction of the editor width (or absolute columns if > 1),
+		-- or "full" for everything the editor has. A single value applies to
+		-- every view. Floating mode only.
 		width = {
 			month = 0.8,
 			week = 0.6,
 			day = 46,
 		},
+
+		-- Height per view: "auto" fits the window to its content, "full" takes
+		-- every row available, a number is a fraction of the editor height (or
+		-- absolute rows if > 1). Anything but "auto" stretches the grid to fill
+		-- the window. A single value applies to every view.
+		height = "auto",
+
 		border = "rounded",
 
 		-- Used when the calendar opens as a sidebar (a regular vertical split)

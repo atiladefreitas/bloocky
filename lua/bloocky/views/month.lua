@@ -7,9 +7,14 @@ local M = {}
 
 function M.render(ctx)
 	local cfg = ctx.config
-	-- 6 "│" separators between the 7 day cells
-	local mw = math.floor((ctx.width - 6) / 7)
-	local width = mw * 7 + 6
+	-- 6 "│" separators between the 7 day cells. Filling spends the cells that
+	-- do not divide evenly on the columns instead of dropping them.
+	local inner = math.max(7, ctx.width - 6)
+	local cols = utils.share(ctx.fill and inner or (math.floor(inner / 7) * 7), 7)
+	local width = 6
+	for _, c in ipairs(cols) do
+		width = width + c
+	end
 
 	local lines, hls = {}, {}
 	local meta = { width = width }
@@ -36,12 +41,21 @@ function M.render(ctx)
 	-- Every week row must fit, so the separators go first when space is tight.
 	local rules = true
 	local avail = ctx.height - 2 - (weeks - 1)
-	local cell_h = math.floor(avail / weeks)
-	if cell_h < 2 then
+	if math.floor(avail / weeks) < 2 then
 		rules = false
-		cell_h = math.max(1, math.floor((ctx.height - 2) / weeks))
+		avail = ctx.height - 2
 	end
-	cell_h = math.min(cell_h, 8)
+	local cell_hs
+	if ctx.fill then
+		-- Every spare row goes to the week rows so the grid reaches the bottom
+		cell_hs = utils.share(math.max(weeks, avail), weeks)
+	else
+		local cell_h = math.max(1, math.min(math.floor(avail / weeks), 8))
+		cell_hs = {}
+		for w = 1, weeks do
+			cell_hs[w] = cell_h
+		end
+	end
 
 	-- Weekday header
 	local first_wd = (cfg.week_start == "monday") and 2 or 1
@@ -51,7 +65,7 @@ function M.render(ctx)
 		if i > 0 then
 			table.insert(header, { "│", "BloockyGrid" })
 		end
-		table.insert(header, { utils.center(utils.WDAYS_SHORT[wd], mw), "BloockyHeader" })
+		table.insert(header, { utils.center(utils.WDAYS_SHORT[wd], cols[i + 1]), "BloockyHeader" })
 	end
 	push(header)
 
@@ -62,7 +76,7 @@ function M.render(ctx)
 			if c > 1 then
 				table.insert(rule, { "┼", "BloockyGrid" })
 			end
-			table.insert(rule, { string.rep("─", mw), "BloockyGrid" })
+			table.insert(rule, { string.rep("─", cols[c]), "BloockyGrid" })
 		end
 		push(rule)
 	end
@@ -71,9 +85,11 @@ function M.render(ctx)
 	local today_str = utils.date_to_str(ctx.today)
 
 	for w = 0, weeks - 1 do
+		local cell_h = cell_hs[w + 1]
 		-- Build every cell of this week row
 		local cells = {}
 		for c = 1, 7 do
+			local mw = cols[c]
 			local d = utils.add_days(grid_start, w * 7 + c - 1)
 			local d_str = utils.date_to_str(d)
 			local in_month = d.month == cur.month
