@@ -37,11 +37,26 @@ function M.setup()
 	end
 end
 
+local function hash_index(text)
+	local sum = 0
+	for i = 1, #text do
+		sum = sum + text:byte(i)
+	end
+	return sum
+end
+
 -- Stable color per block, derived from its id -- except when the sync layer
 -- has something more urgent to say about it.
 function M.block_group(block)
-	if require("bloocky.marks").is_conflicted(block) then
+	local marks = require("bloocky.marks")
+	if marks.is_conflicted(block) then
 		return "BloockyBlockConflict"
+	end
+	-- Blocks from the same calendar share a colour, so a glance separates work
+	-- from personal. Local blocks keep their per-block colour.
+	local calendar = marks.calendar_of(block)
+	if calendar then
+		return "BloockyBlock" .. (hash_index(calendar) % M.palette_size + 1)
 	end
 	local sum = 0
 	local id = tostring(block.id or "")

@@ -296,17 +296,23 @@ A conflict, or anything that actually changed, is never suppressed.
 ## Limits worth knowing before you rely on it
 
 **Repeat rules are a deliberate subset.** Bloocky models daily, weekly,
-weekdays and a custom set of days, with an optional end date. Anything richer —
-every other week, monthly, "the last Friday", a series with individual
-occurrences moved or deleted — cannot be represented.
+weekdays and a custom set of days, with an optional end date, plus excluded
+dates. Anything richer — every other week, monthly, "the last Friday", a series
+with individual occurrences *moved* rather than skipped — cannot be
+represented.
 
 Such events are still imported and shown, and you can edit their **title and
 notes**, which push back normally. Their **timing and repeat rule are locked**,
 because rewriting them from Bloocky's simpler model would destroy the real rule
 for everyone else on that invitation.
 
-**All-day events are skipped.** They have no place on an hour grid yet. They
-are counted in the sync report rather than shown at a time nobody chose.
+**All-day events show above the hour grid**, not in it — a date is not a time,
+and placing one at 00:00 would be inventing one. Multi-day events appear on
+every day they cover. They can be read and their text edited, but their timing
+is locked for the same reason a rule bloocky cannot model is: there is no way
+to express "a date, not a time" from a block, so writing our timing back would
+turn a holiday into a midnight appointment. **Bloocky cannot create one** — use
+your calendar for that.
 
 **Blocks use floating local time.** A 09:00 block is 09:00 wherever you are.
 Events that arrive *from* a calendar keep their own timezone and are written
@@ -317,6 +323,19 @@ deleting it deletes the series.
 
 **Not real-time.** There are no push notifications; syncs happen on the
 triggers above.
+
+---
+
+## Checking your setup
+
+```
+:checkhealth bloocky
+```
+
+Verifies the things that fail quietly: that `curl` exists, that each
+`password_cmd` and `client_secret_cmd` actually *runs* (not just that it is
+configured), that your OAuth token is present and readable only by you, that
+the system timezone database is available, and how much is waiting to sync.
 
 ---
 

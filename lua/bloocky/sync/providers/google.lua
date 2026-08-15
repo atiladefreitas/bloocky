@@ -376,7 +376,7 @@ end
 
 function M.update_event(account, mapping, block)
 	local changes
-	if mapping.lossy then
+	if mapping.lossy or mapping.all_day then
 		-- Only the text is ours to change: the recurrence is something we
 		-- could not model, so its timing must be left exactly as it is.
 		changes = { summary = block.title }

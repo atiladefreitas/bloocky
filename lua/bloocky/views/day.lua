@@ -51,7 +51,8 @@ function M.render(ctx)
 
 	local date = ctx.cursor.date
 	local date_str = utils.date_to_str(date)
-	local blocks = state.blocks_for_date(date)
+	-- All-day blocks never enter the hour grid; they get their own section.
+	local all_day, blocks = state.split_for_date(date)
 	local tasks = dooing.tasks_for_date(date_str)
 
 	-- Everything above the hour grid is collected first: it only gets the rows
@@ -60,6 +61,25 @@ function M.render(ctx)
 	local top = {}
 	local function add(chunks)
 		table.insert(top, chunks)
+	end
+
+	-- All-day section: a date, not a time, so it cannot be placed on an hour
+	if #all_day > 0 then
+		add({ { " " .. cfg.icons.all_day .. " All day", "BloockyHeader" } })
+		local max_shown = 4
+		for i, block in ipairs(all_day) do
+			if i > max_shown then
+				add({ { "    +" .. (#all_day - max_shown) .. " more", "BloockyMore" } })
+				break
+			end
+			local text = "    " .. marks.icon(block) .. " " .. block.title
+			local days = math.ceil((block.duration_min or 1440) / 1440)
+			if days > 1 then
+				text = text .. "  (" .. days .. " days)"
+			end
+			add({ { utils.fit(text, ctx.width), highlights.block_group(block), 100 } })
+		end
+		add({ { string.rep("─", ctx.width), "BloockyGrid" } })
 	end
 
 	-- Dooing deadline section

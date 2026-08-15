@@ -345,6 +345,7 @@ local function apply_remote(account, calendar, response, report)
 			raw = response.data,
 			tz = event.tzid,
 			lossy = event.lossy ~= nil,
+			all_day = event.all_day or nil,
 			readonly = calendar.mode == "ro",
 		})
 		if event.lossy then
@@ -363,6 +364,7 @@ local function apply_remote(account, calendar, response, report)
 		raw = response.data,
 		tz = event.tzid,
 		lossy = event.lossy ~= nil,
+			all_day = event.all_day or nil,
 		readonly = calendar.mode == "ro",
 	})
 	bump(report.pulled, "created")

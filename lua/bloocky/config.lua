@@ -52,6 +52,7 @@ M.options = {
 		block = "▎",
 		dooing = "◆",
 		recurring = "󰑖",
+		all_day = "󰃭", -- a date-based block, shown above the hour grid
 		conflict = "󰀦", -- the calendar overwrote this block
 		readonly = "󰌾", -- lives on a calendar bloocky cannot write to
 	},

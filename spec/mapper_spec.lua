@@ -84,10 +84,22 @@ describe("sync.mapper", function()
 			eq(event.block.start_min, 540)
 		end)
 
-		it("skips an all-day event instead of inventing a time", function()
-			local event = mapper.from_ical(wrap("DTSTART;VALUE=DATE:20260813", "DTEND;VALUE=DATE:20260814"))
-			eq(event.skip, "all-day")
-			eq(event.block, nil, "no half-imported block")
+		it("imports an all-day event as a date-based block", function()
+			local event = mapper.from_ical(wrap("DTSTART;VALUE=DATE:20260813", "DTEND;VALUE=DATE:20260814", "SUMMARY:Holiday"))
+			truthy(event.all_day)
+			truthy(event.block.all_day)
+			eq(event.block.date, "2026-08-13")
+			eq(event.block.title, "Holiday")
+			eq(event.block.duration_min, 1440, "a one-day event, since DTEND is exclusive")
+		end)
+
+		it("measures a multi-day all-day event", function()
+			local event = mapper.from_ical(wrap("DTSTART;VALUE=DATE:20260813", "DTEND;VALUE=DATE:20260816"))
+			eq(event.block.duration_min, 3 * 1440, "13th, 14th and 15th")
+		end)
+
+		it("assumes one day when an all-day event has no DTEND", function()
+			eq(mapper.from_ical(wrap("DTSTART;VALUE=DATE:20260813")).block.duration_min, 1440)
 		end)
 
 		it("flags a cancelled event", function()
@@ -122,9 +134,29 @@ describe("sync.mapper", function()
 			eq(event.block.recurrence, nil, "never pretend to own a rule we did not understand")
 		end)
 
-		it("flags excluded dates", function()
+		-- Excluded dates used to force the whole series to read-only. They are
+		-- now modelled, so the series stays editable.
+		it("models excluded dates instead of giving up", function()
 			local event = mapper.from_ical(wrap("DTSTART:20260813T090000", "DTEND:20260813T100000", "RRULE:FREQ=DAILY", "EXDATE:20260815T090000"))
-			truthy(event.lossy)
+			eq(event.lossy, nil)
+			eq(event.block.recurrence.type, "daily")
+			eq(event.block.recurrence.exdates, { "2026-08-15" })
+		end)
+
+		it("reads several dates from one EXDATE line", function()
+			local event = mapper.from_ical(wrap("DTSTART:20260813T090000", "DTEND:20260813T100000", "RRULE:FREQ=DAILY", "EXDATE:20260815T090000,20260816T090000"))
+			eq(event.block.recurrence.exdates, { "2026-08-15", "2026-08-16" })
+		end)
+
+		it("reads date-valued EXDATEs too", function()
+			local event = mapper.from_ical(wrap("DTSTART;VALUE=DATE:20260813", "DTEND;VALUE=DATE:20260814", "RRULE:FREQ=DAILY", "EXDATE;VALUE=DATE:20260815"))
+			eq(event.block.recurrence.exdates, { "2026-08-15" })
+		end)
+
+		-- Without a rule there is no series to punch a hole in.
+		it("ignores an EXDATE on a non-recurring event", function()
+			local event = mapper.from_ical(wrap("DTSTART:20260813T090000", "DTEND:20260813T100000", "EXDATE:20260815T090000"))
+			eq(event.block.recurrence, nil)
 		end)
 
 		it("flags a series with per-occurrence overrides", function()

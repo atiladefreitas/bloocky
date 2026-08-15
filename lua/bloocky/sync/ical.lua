@@ -398,6 +398,9 @@ function M.build(event)
 	add("SUMMARY", event.summary)
 	add("DESCRIPTION", event.description)
 	add("RRULE", event.rrule, true)
+	if event.exdate and event.exdate ~= "" then
+		table.insert(lines, "EXDATE;VALUE=DATE:" .. event.exdate)
+	end
 
 	table.insert(lines, "END:VEVENT")
 	table.insert(lines, "END:VCALENDAR")

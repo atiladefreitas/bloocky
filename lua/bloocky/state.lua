@@ -74,7 +74,8 @@ function M.add_block(fields)
 		start_min = fields.start_min, -- minutes from midnight
 		duration_min = fields.duration_min,
 		notes = fields.notes or "",
-		recurrence = fields.recurrence, -- nil | { type, days?, until_date? }
+		recurrence = fields.recurrence, -- nil | { type, days?, until_date?, exdates? }
+		all_day = fields.all_day or nil, -- true for a date-based block; absent means timed
 		created_at = os.time(),
 		updated_at = os.time(), -- bumped on every edit; sync reads it
 		source = fields.source or "local", -- "local" or the sync account it came from
@@ -96,6 +97,7 @@ function M.update_block(id, fields)
 			block.duration_min = fields.duration_min
 			block.notes = fields.notes or ""
 			block.recurrence = fields.recurrence
+			block.all_day = fields.all_day or nil
 			block.updated_at = os.time()
 			block.source = block.source or "local" -- backfill for pre-sync blocks
 			M.save_blocks()
@@ -131,8 +133,35 @@ function M.get_block(id)
 	end
 end
 
--- Whether a block has an occurrence on the given day
-local function occurs_on(block, date_str, wd)
+-- How many days an occurrence covers. Only all-day blocks span more than one;
+-- a timed block is a single day no matter how long it runs.
+local function span_days(block)
+	if not block.all_day then
+		return 1
+	end
+	-- Capped so a malformed duration cannot turn the lookup into a long loop.
+	return math.max(1, math.min(366, math.ceil((block.duration_min or 1440) / 1440)))
+end
+
+-- An excluded date removes the whole occurrence, span and all.
+local function excluded(block, date_str)
+	local r = block.recurrence
+	if type(r) ~= "table" or r == vim.NIL then
+		return false
+	end
+	for _, date in ipairs(r.exdates or {}) do
+		if date == date_str then
+			return true
+		end
+	end
+	return false
+end
+
+-- Whether an occurrence *begins* on the given day
+local function starts_on(block, date_str, wd)
+	if excluded(block, date_str) then
+		return false
+	end
 	local r = block.recurrence
 	if not r or r == vim.NIL then
 		return block.date == date_str
@@ -163,21 +192,54 @@ local function occurs_on(block, date_str, wd)
 	return false
 end
 
--- All blocks occurring on a date, sorted by start time
+-- Whether a block covers the given day, counting a multi-day all-day block as
+-- covering every day it runs over rather than only the one it starts on.
+local function occurs_on(block, date_str, wd, date)
+	if starts_on(block, date_str, wd) then
+		return true
+	end
+	local span = span_days(block)
+	if span == 1 or not date then
+		return false
+	end
+	for back = 1, span - 1 do
+		local earlier = utils.add_days(date, -back)
+		if starts_on(block, utils.date_to_str(earlier), utils.wday(earlier)) then
+			return true
+		end
+	end
+	return false
+end
+
+-- All blocks covering a date. All-day blocks come first — they are drawn above
+-- the hour grid, not in it — and the rest sort by start time.
 function M.blocks_for_date(date)
 	M.ensure_loaded()
 	local date_str = utils.date_to_str(date)
 	local wd = utils.wday(date)
 	local out = {}
 	for _, block in ipairs(M.blocks) do
-		if occurs_on(block, date_str, wd) then
+		if occurs_on(block, date_str, wd, date) then
 			table.insert(out, block)
 		end
 	end
 	table.sort(out, function(a, b)
+		if not a.all_day ~= not b.all_day then
+			return a.all_day and true or false
+		end
 		return a.start_min < b.start_min
 	end)
 	return out
+end
+
+-- The all-day and timed blocks for a date, already separated: every view needs
+-- them apart, and doing it here keeps the rule in one place.
+function M.split_for_date(date)
+	local all_day, timed = {}, {}
+	for _, block in ipairs(M.blocks_for_date(date)) do
+		table.insert(block.all_day and all_day or timed, block)
+	end
+	return all_day, timed
 end
 
 return M

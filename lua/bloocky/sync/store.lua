@@ -328,6 +328,18 @@ function M.acknowledge_conflicts()
 	return changed
 end
 
+-- Which calendar each synced block belongs to.
+function M.calendar_ids()
+	M.ensure_loaded()
+	local out = {}
+	for block_id, mapping in pairs(data.mappings) do
+		if mapping.calendar then
+			out[block_id] = mapping.account .. "/" .. mapping.calendar
+		end
+	end
+	return out
+end
+
 -- Blocks living on a calendar we cannot write to.
 function M.readonly_ids()
 	M.ensure_loaded()

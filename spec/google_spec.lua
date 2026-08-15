@@ -60,24 +60,27 @@ describe("sync.providers.google", function()
 			eq(event.block.recurrence, nil)
 		end)
 
-		it("flags excluded dates", function()
+		it("carries excluded dates through", function()
 			local event = mapper.from_ical(google.to_ical({
 				id = "x",
 				start = { dateTime = "2026-08-13T09:00:00Z" },
 				["end"] = { dateTime = "2026-08-13T10:00:00Z" },
 				recurrence = { "RRULE:FREQ=DAILY", "EXDATE;TZID=UTC:20260815T090000" },
 			}))
-			truthy(event.lossy)
+			eq(event.lossy, nil)
+			eq(event.block.recurrence.exdates, { "2026-08-15" })
 		end)
 
-		it("marks an all-day event so it is skipped, not mistimed", function()
+		it("imports an all-day event as a date-based block", function()
 			local event = mapper.from_ical(google.to_ical({
 				id = "x",
 				summary = "Holiday",
 				start = { date = "2026-08-13" },
 				["end"] = { date = "2026-08-14" },
 			}))
-			eq(event.skip, "all-day")
+			truthy(event.block.all_day)
+			eq(event.block.date, "2026-08-13")
+			eq(event.block.duration_min, 1440)
 		end)
 
 		it("passes a cancellation through", function()

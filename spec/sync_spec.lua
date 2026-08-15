@@ -306,7 +306,7 @@ describe("sync engine", function()
 			eq(#state.blocks, 0)
 		end)
 
-		it("counts an all-day event as skipped rather than importing it", function()
+		it("imports an all-day event onto the grid", function()
 			setup()
 			local allday = table.concat({
 				"BEGIN:VCALENDAR",
@@ -320,9 +320,11 @@ describe("sync engine", function()
 			}, "\r\n")
 			server:put(CALENDAR .. "allday.ics", allday)
 
-			local report = run_sync()
-			eq(#state.blocks, 0)
-			eq(report.skipped["all-day"], 1)
+			run_sync()
+			eq(#state.blocks, 1)
+			local block = find_block("Public holiday")
+			truthy(block.all_day)
+			eq(block.date, "2026-08-13")
 		end)
 	end)
 

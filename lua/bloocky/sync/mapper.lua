@@ -70,11 +70,34 @@ function M.from_ical(text)
 	end
 	event.tzid = dtstart.tzid
 
-	-- All-day events have no place on an hour grid yet. Counted and skipped,
-	-- rather than shown at a time nobody chose.
+	-- All-day events carry a date, not a time, and are shown above the hour
+	-- grid rather than placed at an hour nobody chose. DTEND is exclusive, so
+	-- a one-day event ends on the following date.
 	if dtstart.date_only then
-		event.skip = "all-day"
 		event.all_day = true
+		local dtend = ical.parse_datetime(ical.get(doc, range, "DTEND"))
+		local days = 1
+		if dtend and dtend.date_only then
+			local from = os.time({ year = dtstart.year, month = dtstart.month, day = dtstart.day, hour = 12 })
+			local to = os.time({ year = dtend.year, month = dtend.month, day = dtend.day, hour = 12 })
+			days = math.max(1, math.floor((to - from) / 86400 + 0.5))
+		end
+		event.block = {
+			title = ical.text(ical.get(doc, range, "SUMMARY")) or "(untitled)",
+			date = string.format("%04d-%02d-%02d", dtstart.year, dtstart.month, dtstart.day),
+			start_min = 0,
+			duration_min = days * 1440,
+			notes = ical.text(ical.get(doc, range, "DESCRIPTION")) or "",
+			all_day = true,
+			recurrence = rrule.from_rrule(ical.text(ical.get(doc, range, "RRULE"))) or nil,
+		}
+		event.lossy = rrule.unsupported({
+			rrule = ical.text(ical.get(doc, range, "RRULE")),
+			exdate = false,
+			rdate = #ical.get_all(doc, range, "RDATE") > 0,
+			overrides = #ical.events(doc) > 1,
+		})
+		M.apply_exdates(doc, range, event.block)
 		return event
 	end
 
@@ -96,9 +119,10 @@ function M.from_ical(text)
 	local rrule_value = ical.text(ical.get(doc, range, "RRULE"))
 	local recurrence = rrule_value and rrule.from_rrule(rrule_value) or nil
 
+	-- EXDATE is no longer a reason to give up: excluded dates are modelled.
 	event.lossy = rrule.unsupported({
 		rrule = rrule_value,
-		exdate = #ical.get_all(doc, range, "EXDATE") > 0,
+		exdate = false,
 		rdate = #ical.get_all(doc, range, "RDATE") > 0,
 		overrides = #ical.events(doc) > 1,
 	})
@@ -117,7 +141,38 @@ function M.from_ical(text)
 		recurrence = recurrence,
 	}
 
+	M.apply_exdates(doc, range, event.block)
 	return event
+end
+
+-- EXDATE lines carry one or more dates, each either a date-time or a plain
+-- date. Only the day matters to bloocky, which is why they can be modelled at
+-- all: the block simply does not occur on those days.
+function M.apply_exdates(doc, range, block)
+	if not block then
+		return
+	end
+	local dates = {}
+	for _, prop in ipairs(ical.get_all(doc, range, "EXDATE")) do
+		for value in prop.value:gmatch("[^,]+") do
+			local year, month, day = value:match("^%s*(%d%d%d%d)(%d%d)(%d%d)")
+			if year then
+				table.insert(dates, ("%s-%s-%s"):format(year, month, day))
+			end
+		end
+	end
+	if #dates == 0 then
+		return
+	end
+	table.sort(dates)
+	-- An exclusion only means anything against a rule; without one there is
+	-- nothing to exclude from.
+	block.recurrence = block.recurrence or {}
+	if not block.recurrence.type then
+		block.recurrence = nil
+		return
+	end
+	block.recurrence.exdates = dates
 end
 
 --------------------------------------------------------------------------
@@ -194,6 +249,7 @@ function M.to_ical(block)
 		summary = block.title,
 		description = block.notes,
 		rrule = rrule.to_rrule(block.recurrence),
+		exdate = rrule.to_exdate(block.recurrence),
 	})
 end
 
@@ -208,7 +264,10 @@ function M.patch_changes(block, opts)
 		SUMMARY = block.title,
 		DESCRIPTION = (block.notes ~= nil and block.notes ~= "") and block.notes or false,
 	}
-	if opts.lossy then
+	-- An all-day event is locked for the same reason a rule we cannot model
+	-- is: bloocky has no way to express "a date, not a time", so writing our
+	-- timing back would turn somebody's holiday into a 00:00 appointment.
+	if opts.lossy or opts.all_day then
 		return changes
 	end
 
@@ -219,8 +278,11 @@ function M.patch_changes(block, opts)
 		-- DURATION and DTEND are mutually exclusive; we always write DTEND.
 		changes.DURATION = false
 	end
-	changes.RRULE = rrule.to_rrule(block.recurrence) and { value = rrule.to_rrule(block.recurrence), raw = true }
-		or false
+	local rule = rrule.to_rrule(block.recurrence)
+	changes.RRULE = rule and { value = rule, raw = true } or false
+
+	local exdate = rrule.to_exdate(block.recurrence)
+	changes.EXDATE = exdate and { value = exdate, params = ";VALUE=DATE", raw = true } or false
 	return changes
 end
 

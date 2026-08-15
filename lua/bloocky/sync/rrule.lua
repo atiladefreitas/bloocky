@@ -77,6 +77,27 @@ end
 -- Bloocky -> RRULE
 --------------------------------------------------------------------------
 
+-- The EXDATE property value for a block, or nil when nothing is excluded.
+-- Emitted as dates: bloocky excludes whole days, never single occurrences of a
+-- day, so a date value says exactly what is meant.
+function M.to_exdate(recurrence)
+	if type(recurrence) ~= "table" or recurrence == vim.NIL then
+		return nil
+	end
+	local dates = {}
+	for _, date in ipairs(recurrence.exdates or {}) do
+		local year, month, day = tostring(date):match("^(%d%d%d%d)-(%d%d)-(%d%d)$")
+		if year then
+			table.insert(dates, year .. month .. day)
+		end
+	end
+	if #dates == 0 then
+		return nil
+	end
+	table.sort(dates)
+	return table.concat(dates, ",")
+end
+
 -- Returns the RRULE property value, or nil for a non-recurring block.
 function M.to_rrule(recurrence)
 	if type(recurrence) ~= "table" or recurrence == vim.NIL then

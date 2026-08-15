@@ -14,10 +14,10 @@ local config = require("bloocky.config")
 
 local M = {}
 
-local conflicted, readonly = {}, {}
+local conflicted, readonly, calendars = {}, {}, {}
 
 function M.refresh()
-	conflicted, readonly = {}, {}
+	conflicted, readonly, calendars = {}, {}, {}
 
 	local sync = config.options.sync
 	if not (sync and sync.enabled) then
@@ -31,6 +31,7 @@ function M.refresh()
 	pcall(function()
 		conflicted = store.conflicted_ids()
 		readonly = store.readonly_ids()
+		calendars = store.calendar_ids()
 	end)
 end
 
@@ -40,6 +41,12 @@ end
 
 function M.is_readonly(block)
 	return block ~= nil and readonly[block.id] == true
+end
+
+-- Which calendar a block came from, so every event on one calendar can share
+-- a colour instead of each block getting its own from its id.
+function M.calendar_of(block)
+	return block ~= nil and calendars[block.id] or nil
 end
 
 function M.any_conflicts()

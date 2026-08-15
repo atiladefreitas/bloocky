@@ -109,6 +109,7 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
         block = "▎",
         dooing = "◆",
         recurring = "󰑖",
+        all_day = "󰃭",   -- a date-based block, shown above the hour grid
         conflict = "󰀦",  -- the calendar overwrote this block
         readonly = "󰌾",  -- lives on a calendar bloocky cannot write to
     },
@@ -226,6 +227,7 @@ Only registered when sync is enabled — see the [calendar guide](CALENDARS.md).
 - `:BloockySyncAuth <account>` — run the OAuth flow (Google)
 - `:BloockySyncRevoke <account>` — revoke and delete a stored token
 - `:BloockySyncReset [account]` — force a full re-sync
+- `:checkhealth bloocky` — verify your setup end to end
 
 ---
 

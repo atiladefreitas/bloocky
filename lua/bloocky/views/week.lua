@@ -82,6 +82,38 @@ function M.render(ctx)
 		end
 	end
 
+	-- Blocks for the week, split once: all-day ones go in a strip above the
+	-- grid, timed ones into it.
+	local occ, all_day = {}, {}
+	for i, d in ipairs(days) do
+		all_day[i], occ[i] = state.split_for_date(d)
+	end
+
+	-- All-day strip
+	local any_all_day = false
+	for i in ipairs(days) do
+		if #all_day[i] > 0 then
+			any_all_day = true
+		end
+	end
+	if any_all_day then
+		local chunks = { { utils.fit(" " .. cfg.icons.all_day, gutter), "BloockyTime" } }
+		for i in ipairs(days) do
+			table.insert(chunks, { "│", "BloockyGrid" })
+			if #all_day[i] > 0 then
+				local block = all_day[i][1]
+				local text = marks.icon(block) .. block.title
+				if #all_day[i] > 1 then
+					text = marks.icon(block) .. "×" .. #all_day[i] .. " " .. block.title
+				end
+				table.insert(chunks, { utils.fit(text, cws[i]), highlights.block_group(block), 100 })
+			else
+				table.insert(chunks, { string.rep(" ", cws[i]) })
+			end
+		end
+		push(chunks)
+	end
+
 	-- Dooing deadline strip
 	local due = {}
 	local any_due = false
@@ -115,10 +147,6 @@ function M.render(ctx)
 	push(rule)
 
 	-- Hour grid
-	local occ = {}
-	for i, d in ipairs(days) do
-		occ[i] = state.blocks_for_date(d)
-	end
 	local cursor_col = nil
 	for i, d in ipairs(days) do
 		if utils.same_day(d, ctx.cursor.date) then

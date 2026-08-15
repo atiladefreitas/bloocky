@@ -479,6 +479,7 @@ function M.update_event(account, mapping, block)
 	-- top of ical.lua.
 	local body = ical.patch(mapping.raw, mapper.patch_changes(block, {
 		lossy = mapping.lossy,
+		all_day = mapping.all_day,
 		tzid = mapping.tz,
 	}))
 	local result, err = M.put(account, M.resolve(account.url, mapping.href), body, mapping.etag)
