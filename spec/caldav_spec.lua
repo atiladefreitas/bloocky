@@ -14,6 +14,14 @@ describe("sync.providers.caldav", function()
 			truthy(caldav.sync_collection_body(nil):find("<d:sync-token></d:sync-token>", 1, true))
 		end)
 
+		-- The token is opaque server data coming back around; markup inside it
+		-- must not restructure our own request.
+		it("escapes the sync token", function()
+			local body = caldav.sync_collection_body('x</d:sync-token><evil attr="1"/>')
+			falsy(body:find("<evil", 1, true))
+			truthy(body:find("&lt;evil", 1, true))
+		end)
+
 		it("builds a multiget listing every href", function()
 			local body = caldav.multiget_body({ "/cal/a.ics", "/cal/b.ics" })
 			truthy(body:find("<d:href>/cal/a.ics</d:href>", 1, true))

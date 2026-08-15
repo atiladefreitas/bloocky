@@ -39,6 +39,14 @@ function M.load_blocks()
 	local ok, decoded = pcall(vim.fn.json_decode, content)
 	if ok and type(decoded) == "table" then
 		M.blocks = decoded
+		-- Other writers use this file too (docs/block-structure.md), and a
+		-- title carrying a newline would crash nvim_buf_set_lines on every
+		-- redraw. Sync flattens these on import; do the same for direct writes.
+		for _, block in ipairs(M.blocks) do
+			if type(block) == "table" and type(block.title) == "string" and block.title:find("[\r\n]") then
+				block.title = block.title:gsub("%s*[\r\n]+%s*", " ")
+			end
+		end
 	else
 		vim.notify("Bloocky: could not parse " .. path, vim.log.levels.WARN)
 		M.blocks = {}
@@ -51,17 +59,21 @@ function M.ensure_loaded()
 	end
 end
 
--- Save blocks to disk
+-- Save blocks to disk. Created 0600: with sync enabled the blocks mirror
+-- calendar contents, which are not for other users of the machine. (Other
+-- *readers* of the file — see docs/block-structure.md — run as the same user.)
 function M.save_blocks()
 	local path = config.options.save_path
 	vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
-	local file = io.open(path, "w")
-	if not file then
+	local fd = vim.uv.fs_open(path, "w", tonumber("600", 8))
+	if not fd then
 		vim.notify("Bloocky: could not write " .. path, vim.log.levels.ERROR)
 		return
 	end
-	file:write(vim.json.encode(M.blocks))
-	file:close()
+	vim.uv.fs_write(fd, vim.json.encode(M.blocks))
+	vim.uv.fs_close(fd)
+	-- The mode above only applies at creation; tighten files from before it.
+	pcall(vim.uv.fs_chmod, path, tonumber("600", 8))
 end
 
 -- Create a new time block

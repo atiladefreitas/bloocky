@@ -97,13 +97,16 @@ function M.save()
 	vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
 
 	local tmp = path .. ".tmp"
-	local file = io.open(tmp, "w")
-	if not file then
+	-- Created 0600 like tokens.json: the mappings cache raw event payloads —
+	-- descriptions, attendees, whole invitations — which are effectively a
+	-- plaintext copy of the calendar and nobody else's business.
+	local fd = vim.uv.fs_open(tmp, "w", tonumber("600", 8))
+	if not fd then
 		vim.notify("Bloocky: could not write " .. tmp, vim.log.levels.ERROR)
 		return false
 	end
-	file:write(vim.json.encode(data))
-	file:close()
+	vim.uv.fs_write(fd, vim.json.encode(data))
+	vim.uv.fs_close(fd)
 
 	local ok, err = vim.uv.fs_rename(tmp, path)
 	if not ok then
@@ -350,6 +353,34 @@ function M.readonly_ids()
 		end
 	end
 	return out
+end
+
+-- Drop state belonging to accounts that no longer exist in the config.
+-- Tombstones are only ever drained by a sync of their own account, so without
+-- this a deletion queued for a since-removed account would sit in the file
+-- forever; orphaned mappings have the same shape of problem.
+function M.prune_accounts(valid_ids)
+	M.ensure_loaded()
+	local changed = false
+	for block_id, mapping in pairs(data.mappings) do
+		if mapping.account and not valid_ids[mapping.account] then
+			data.mappings[block_id] = nil
+			changed = true
+		end
+	end
+	local kept = {}
+	for _, tombstone in ipairs(data.tombstones) do
+		if not tombstone.account or valid_ids[tombstone.account] then
+			table.insert(kept, tombstone)
+		else
+			changed = true
+		end
+	end
+	if changed then
+		data.tombstones = kept
+		M.save()
+	end
+	return changed
 end
 
 -- Forget where we got to, forcing the next sync to be a full one. Mappings for

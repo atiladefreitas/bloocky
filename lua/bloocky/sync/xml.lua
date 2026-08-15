@@ -18,7 +18,12 @@ local function decode(text)
 		if entity:sub(1, 1) == "#" then
 			local hex = entity:match("^#[xX](%x+)$")
 			local code = hex and tonumber(hex, 16) or tonumber(entity:sub(2))
-			return code and vim.fn.nr2char(code, 1) or ("&" .. entity .. ";")
+			-- Bounded to Unicode: nr2char throws past INT_MAX, and nothing a
+			-- server sends may be able to throw. NUL is excluded on purpose.
+			if code and code > 0 and code <= 0x10FFFF then
+				return vim.fn.nr2char(code, 1)
+			end
+			return "&" .. entity .. ";"
 		end
 		return NAMED[entity:lower()] or ("&" .. entity .. ";")
 	end))

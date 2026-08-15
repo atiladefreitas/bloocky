@@ -20,6 +20,20 @@ describe("sync.providers.google", function()
 			eq(event.block.duration_min, 60)
 		end)
 
+		-- The iCalUID is chosen by whoever created the event — anyone who can
+		-- invite you — so a CR/LF inside one must not become an injected line.
+		it("keeps a smuggled newline from becoming an iCalendar property", function()
+			local text = google.to_ical({
+				id = "x",
+				iCalUID = "evil\r\nATTENDEE:mailto:mallory@example.com\r\nX-UID:x",
+				summary = "Innocent",
+				start = { dateTime = "2026-08-13T09:00:00Z" },
+				["end"] = { dateTime = "2026-08-13T10:00:00Z" },
+			})
+			falsy(text:find("\nATTENDEE", 1, true), "the UID injected a property")
+			eq(mapper.from_ical(text).block.title, "Innocent")
+		end)
+
 		-- Google always sends an offset; the instant it denotes must survive.
 		it("honours the UTC offset rather than reading the clock face", function()
 			local original = os.getenv("TZ")

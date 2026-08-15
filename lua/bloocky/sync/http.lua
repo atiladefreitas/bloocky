@@ -68,7 +68,11 @@ function M.check_url(url)
 		return nil
 	end
 	if scheme == "http" then
-		local host = authority:match("^%[.-%]") or authority:match("^([^:]+)")
+		-- Discard any userinfo before looking at the host, or
+		-- "http://localhost:1@evil.com/" would read as loopback while curl
+		-- happily connects to evil.com with credentials in tow.
+		local hostport = authority:match("@([^@]*)$") or authority
+		local host = hostport:match("^%[.-%]") or hostport:match("^([^:]+)")
 		if LOOPBACK[(host or ""):lower()] then
 			return nil -- the OAuth loopback redirect, which never leaves the machine
 		end
@@ -117,7 +121,17 @@ local function write_secret_config(lines)
 end
 
 local function quote(value)
-	return '"' .. tostring(value):gsub("\\", "\\\\"):gsub('"', '\\"') .. '"'
+	-- curl's config parser understands these escapes inside a quoted string.
+	-- A literal newline would end the value instead, and whatever followed it
+	-- in the secret would be read as further config directives.
+	local escaped = tostring(value)
+		:gsub("\\", "\\\\")
+		:gsub('"', '\\"')
+		:gsub("\t", "\\t")
+		:gsub("\n", "\\n")
+		:gsub("\r", "\\r")
+		:gsub("\v", "\\v")
+	return '"' .. escaped .. '"'
 end
 
 local function build(opts)

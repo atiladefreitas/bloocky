@@ -91,6 +91,14 @@ describe("sync.xml", function()
 			eq(xml.find_text(xml.parse("<a>&nope;</a>"), "a"), "&nope;")
 		end)
 
+		-- nr2char throws past INT_MAX; a server response must never be able to
+		-- throw its way out of a sync.
+		it("survives an out-of-range character reference", function()
+			eq(xml.find_text(xml.parse("<a>&#xFFFFFFFF;</a>"), "a"), "&#xFFFFFFFF;")
+			eq(xml.find_text(xml.parse("<a>&#0;</a>"), "a"), "&#0;")
+			eq(xml.find_text(xml.parse("<a>&#4294967295;</a>"), "a"), "&#4294967295;")
+		end)
+
 		it("decodes inside attributes", function()
 			eq(xml.parse('<a title="x &amp; y"/>').children[1].attrs.title, "x & y")
 		end)

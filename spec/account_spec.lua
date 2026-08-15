@@ -122,22 +122,53 @@ describe("sync.account", function()
 	end)
 
 	describe("normalize", function()
-		it("defaults a google calendar id to the username", function()
-			eq(account.normalize({ id = "g", provider = "google", username = "me@gmail.com" }).calendar_id, "me@gmail.com")
-		end)
-
-		it("falls back to the primary calendar", function()
-			eq(account.normalize({ id = "g", provider = "google" }).calendar_id, "primary")
-		end)
-
 		-- The REST provider builds its own endpoints; there is no URL to set.
 		it("does not invent a url for a google account", function()
 			eq(account.normalize({ id = "g", provider = "google" }).url, nil)
 		end)
 
+		-- The option is dead since the OAuth-scope spike killed the CalDAV
+		-- bridge; someone who set it expected to *limit* the sync, so silence
+		-- is the wrong answer.
+		it("warns that calendar_id does nothing", function()
+			local problems = account.validate({
+				id = "g",
+				provider = "google",
+				client_id = "x",
+				calendar_id = "me@gmail.com",
+			})
+			local found = nil
+			for _, problem in ipairs(problems) do
+				if problem:find("calendar_id", 1, true) then
+					found = problem
+				end
+			end
+			truthy(found, "setting calendar_id must be called out")
+			truthy(found:match("^WARN "), "it is a warning, not a fatal problem")
+			truthy(found:find("calendars = ", 1, true), "the message must name the working spelling")
+		end)
+
 		it("leaves a caldav account alone", function()
 			local acct = account.normalize({ id = "c", provider = "caldav", url = "https://x/" })
 			eq(acct.url, "https://x/")
+		end)
+	end)
+
+	describe("accounts", function()
+		-- The tables handed to setup() belong to the user. Nothing bloocky
+		-- writes during a sync may show up in their config at runtime.
+		it("never mutates the tables the user passed to setup()", function()
+			local config = require("bloocky.config")
+			local saved = config.options.sync
+			local original = { id = "c", provider = "caldav", url = "https://x/", username = "u", password = "p" }
+			config.options.sync = { enabled = true, accounts = { original } }
+
+			local copy = account.accounts()[1]
+			copy.is_default = true
+			account.normalize(copy)
+
+			eq(original.is_default, nil, "the user's own table grew a field they never wrote")
+			config.options.sync = saved
 		end)
 	end)
 

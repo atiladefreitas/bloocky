@@ -550,6 +550,10 @@ function M.sync_account(account, done)
 end
 
 -- Sync one account, or every configured account.
+--
+-- `done` receives the list of per-account reports, or nil when nothing ran.
+-- The whole list, not whichever finished last: the periodic backoff has to
+-- see a broken account even when a healthy one happens to complete after it.
 function M.run(account_id, done, opts)
 	done = done or function() end
 	opts = opts or {}
@@ -582,7 +586,17 @@ function M.run(account_id, done, opts)
 	end
 
 	local all = account_config.accounts()
+
+	-- State for accounts that have left the config would otherwise sit in the
+	-- store forever: tombstones only drain through a sync of their own account.
+	local valid = {}
+	for _, account in ipairs(all) do
+		valid[account.id] = true
+	end
+	store.prune_accounts(valid)
+
 	local pending = #accounts
+	local reports = {}
 	for _, account in ipairs(accounts) do
 		account.is_default = all[1] and all[1].id == account.id
 
@@ -625,12 +639,13 @@ function M.run(account_id, done, opts)
 			M.sync_account(account, function(report)
 				running[account.id] = false
 				M.notify_report(report, opts)
+				table.insert(reports, report)
 				pcall(function()
 					require("bloocky.ui").render()
 				end)
 				pending = pending - 1
 				if pending == 0 then
-					done(report)
+					done(#reports > 0 and reports or nil)
 				end
 			end)
 		end

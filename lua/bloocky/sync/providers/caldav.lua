@@ -26,19 +26,21 @@ function M.propfind_body(props)
 	return table.concat(lines)
 end
 
+local function escape_xml(text)
+	return (tostring(text):gsub("[&<>\"]", { ["&"] = "&amp;", ["<"] = "&lt;", [">"] = "&gt;", ['"'] = "&quot;" }))
+end
+
+-- The token is the server's own opaque string coming back around; escaped all
+-- the same, so nothing it contains can restructure the request.
 function M.sync_collection_body(token)
 	return table.concat({
 		'<?xml version="1.0" encoding="utf-8"?>',
 		"<d:sync-collection " .. NS .. ">",
-		"<d:sync-token>" .. (token or "") .. "</d:sync-token>",
+		"<d:sync-token>" .. escape_xml(token or "") .. "</d:sync-token>",
 		"<d:sync-level>1</d:sync-level>",
 		"<d:prop><d:getetag/></d:prop>",
 		"</d:sync-collection>",
 	})
-end
-
-local function escape_xml(text)
-	return (tostring(text):gsub("[&<>\"]", { ["&"] = "&amp;", ["<"] = "&lt;", [">"] = "&gt;", ['"'] = "&quot;" }))
 end
 
 function M.multiget_body(hrefs)
@@ -145,6 +147,12 @@ end
 
 -- Resolve an href against the account's base URL. Servers reply with paths,
 -- not absolute URLs.
+--
+-- An absolute href is honoured even when it names a different host: iCloud
+-- legitimately hands out a calendar-home on a pXX-caldav.icloud.com partition
+-- host, so a same-origin rule would break real servers. What makes that
+-- acceptable is http.check_url, which every request passes through — a
+-- delegated host gets credentials only ever over verified TLS.
 function M.resolve(base, href)
 	if href:match("^https?://") then
 		return href

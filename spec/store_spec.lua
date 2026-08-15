@@ -171,6 +171,22 @@ describe("sync.store", function()
 			eq(#store.tombstones(), 0)
 			falsy(store.clear_tombstone(b.id), "clearing twice is a no-op")
 		end)
+
+		-- Tombstones only drain through a sync of their own account. Once the
+		-- account is gone from the config, nothing would ever drain them.
+		it("prunes state for accounts that left the config", function()
+			fresh()
+			local gone, kept = block({ id = "a" }), block({ id = "b" })
+			store.mark_synced(gone, { account = "gone" })
+			store.mark_synced(kept, { account = "work" })
+			store.record_deletion(gone)
+
+			truthy(store.prune_accounts({ work = true }))
+			eq(#store.tombstones(), 0, "the orphaned tombstone must go")
+			eq(store.get_mapping(kept.id).account, "work", "the live account is untouched")
+
+			falsy(store.prune_accounts({ work = true }), "nothing left to prune is a no-op")
+		end)
 	end)
 
 	describe("conflicts", function()

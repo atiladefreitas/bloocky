@@ -132,11 +132,11 @@ function M.sync(opts)
 	end
 
 	M.show_status(opts.label or "syncing")
-	require("bloocky.sync").run(nil, function(report)
+	require("bloocky.sync").run(nil, function(reports)
 		M.hide_status()
 		M.render()
 		if opts.on_done then
-			opts.on_done(report)
+			opts.on_done(reports)
 		end
 	end, { quiet = opts.quiet })
 end
@@ -180,8 +180,17 @@ local function schedule_periodic()
 		end
 		M.sync({
 			quiet = true,
-			on_done = function(report)
-				if report and #report.errors > 0 then
+			on_done = function(reports)
+				-- Any failed account backs the whole timer off. Otherwise, with
+				-- one broken account and one healthy one, whether the failure
+				-- was seen would depend on which finished last.
+				local failed = false
+				for _, report in ipairs(reports or {}) do
+					if #report.errors > 0 then
+						failed = true
+					end
+				end
+				if failed then
 					periodic.failures = periodic.failures + 1
 				else
 					periodic.failures = 0
@@ -501,7 +510,10 @@ function M.delete_block()
 	end
 	pick_block(blocks, function(block)
 		local label = block.title
-		if block.recurrence then
+		-- vim.NIL, not just nil: a block written with an explicit
+		-- `"recurrence": null` by another writer is still a one-off, and must
+		-- not get the scary whole-series warning.
+		if block.recurrence and block.recurrence ~= vim.NIL then
 			label = label .. " (recurring — the whole series will be deleted)"
 		end
 		if vim.fn.confirm('Delete "' .. label .. '"?', "&Yes\n&No", 2) == 1 then

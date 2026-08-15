@@ -31,8 +31,14 @@ local function with_stub(report, fn)
 	end
 end
 
-local CLEAN = { errors = {}, conflicts = {}, reverted = {}, pushed = {}, pulled = {} }
-local FAILING = { errors = { "could not reach the server" }, conflicts = {}, reverted = {}, pushed = {}, pulled = {} }
+-- sync.run hands on_done the *list* of per-account reports.
+local function report(errors)
+	return { errors = errors or {}, conflicts = {}, reverted = {}, pushed = {}, pulled = {} }
+end
+local CLEAN = { report() }
+local FAILING = { report({ "could not reach the server" }) }
+-- The healthy account finished last; the broken one must still be seen.
+local MIXED = { report({ "could not reach the server" }), report() }
 
 describe("periodic sync", function()
 	describe("scheduling", function()
@@ -129,6 +135,21 @@ describe("periodic sync", function()
 					return ui.periodic_state().failures >= 2
 				end)
 				truthy(ui.periodic_state().failures >= 2, "failures were not counted")
+			end)
+			ui.close()
+		end)
+
+		-- Two accounts, one broken, and the healthy one happened to finish
+		-- last. The backoff must see the failure anyway.
+		it("backs off when any account failed, not just the last one", function()
+			configure()
+			ui.open()
+			with_stub(MIXED, function()
+				ui.start_periodic_sync()
+				vim.wait(4000, function()
+					return ui.periodic_state().failures >= 1
+				end)
+				truthy(ui.periodic_state().failures >= 1, "a failure hidden behind a healthy account was ignored")
 			end)
 			ui.close()
 		end)

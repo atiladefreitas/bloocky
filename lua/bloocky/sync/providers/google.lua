@@ -127,6 +127,13 @@ local function datetime_property(slot)
 	return { params = "", value = ical.format_datetime(dt, { utc = sign ~= nil }) }
 end
 
+-- A server field lands on a single iCalendar content line. The iCalUID is
+-- chosen by whoever *created* the event — anyone who can invite you — so a
+-- CR/LF smuggled into one must not become an injected property downstream.
+local function oneline(value)
+	return (tostring(value):gsub("[\r\n]+", " "))
+end
+
 -- Build a VEVENT so the rest of the engine sees the same shape it gets from a
 -- CalDAV server. `recurrence` carries real RRULE/EXDATE/RDATE lines, so
 -- rrule.unsupported works on it unchanged.
@@ -136,7 +143,7 @@ function M.to_ical(event)
 		"VERSION:2.0",
 		"PRODID:-//bloocky.nvim//google//EN",
 		"BEGIN:VEVENT",
-		"UID:" .. (event.iCalUID or event.id or ""),
+		"UID:" .. oneline(event.iCalUID or event.id or ""),
 		"DTSTAMP:" .. (tz.now_utc_stamp()),
 	}
 
@@ -157,10 +164,10 @@ function M.to_ical(event)
 		table.insert(lines, "DESCRIPTION:" .. ical.escape(event.description))
 	end
 	if event.status then
-		table.insert(lines, "STATUS:" .. event.status:upper())
+		table.insert(lines, "STATUS:" .. oneline(event.status:upper()))
 	end
 	if event.transparency then
-		table.insert(lines, "TRANSP:" .. event.transparency:upper())
+		table.insert(lines, "TRANSP:" .. oneline(event.transparency:upper()))
 	end
 	if event.recurringEventId then
 		-- An instance carrying its own overrides; treated as a per-occurrence
@@ -168,7 +175,7 @@ function M.to_ical(event)
 		table.insert(lines, "RECURRENCE-ID:" .. (datetime_property(event.originalStartTime) or starts).value)
 	end
 	for _, rule in ipairs(event.recurrence or {}) do
-		table.insert(lines, rule)
+		table.insert(lines, oneline(rule))
 	end
 
 	table.insert(lines, "END:VEVENT")

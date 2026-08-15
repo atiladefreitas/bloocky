@@ -63,6 +63,18 @@ describe("sync.http", function()
 			eq(http.check_url("http://localhost:8080/callback"), nil)
 		end)
 
+		-- "localhost:1" here is userinfo; the request actually goes to
+		-- evil.com, in the clear, with credentials attached.
+		it("is not fooled by a loopback name in the userinfo", function()
+			truthy(http.check_url("http://localhost:1@evil.com/"))
+			truthy(http.check_url("http://127.0.0.1@evil.com/"))
+			truthy(http.check_url("http://a@localhost:1@evil.com/"))
+		end)
+
+		it("still allows real loopback with userinfo", function()
+			eq(http.check_url("http://user:pass@localhost:8080/"), nil)
+		end)
+
 		it("refuses other schemes", function()
 			truthy(http.check_url("ftp://example.com/"))
 			truthy(http.check_url("file:///etc/passwd"))

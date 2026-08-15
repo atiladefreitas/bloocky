@@ -206,8 +206,9 @@ end
 
 local function run_sync()
 	local report
-	sync.run("work", function(result)
-		report = result
+	sync.run("work", function(reports)
+		-- One account synced, so the list carries one report.
+		report = reports and reports[1]
 	end)
 	vim.wait(2000, function()
 		return report ~= nil

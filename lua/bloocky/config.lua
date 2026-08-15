@@ -127,7 +127,8 @@ M.options = {
 		--     -- (RFC 8252) and PKCE is what protects the exchange, so you can
 		--     -- leave this out entirely if Google accepts the grant without it.
 		--     client_secret_cmd = { "secret-tool", "lookup", "service", "bloocky", "key", "google" },
-		--     calendar_id = "you@gmail.com",  -- defaults to `username`
+		--     -- All calendars sync by default; limit with
+		--     -- calendars = { { name = "Work" } }
 		--   }
 		--
 		-- New blocks are created in the default calendar of the first account.

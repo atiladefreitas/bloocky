@@ -39,6 +39,16 @@ describe("sync.mapper", function()
 			eq(mapper.from_ical(wrap("DTSTART:20260813T090000", "DTEND:20260813T100000")).block.title, "(untitled)")
 		end)
 
+		-- The \n TEXT escape is legal in SUMMARY, but a title with a real
+		-- newline in it crashes nvim_buf_set_lines on every redraw.
+		it("flattens a multi-line title onto one line", function()
+			local event = mapper.from_ical(
+				wrap("DTSTART:20260813T090000", "DTEND:20260813T100000", "SUMMARY:Line one\\nLine two")
+			)
+			eq(event.block.title, "Line one Line two")
+			falsy(event.block.title:find("\n"), "a newline in a title breaks rendering")
+		end)
+
 		it("accepts DURATION instead of DTEND", function()
 			local event = mapper.from_ical(wrap("DTSTART:20260813T090000", "DURATION:PT1H30M"))
 			eq(event.block.duration_min, 90)

@@ -23,6 +23,14 @@ local M = {}
 -- Reading
 --------------------------------------------------------------------------
 
+-- A title goes on one grid line and one dialog line. RFC 5545 allows the \n
+-- TEXT escape in SUMMARY, so a remote title can legally carry a real newline —
+-- which nvim_buf_set_lines refuses, crashing every redraw until the event is
+-- gone. Flattened here, once, so no view has to remember to.
+local function single_line(text)
+	return (text:gsub("%s*[\r\n]+%s*", " "))
+end
+
 -- A date-time as an absolute instant, whatever form it arrived in.
 local function to_instant(dt, tzid)
 	if dt.utc then
@@ -83,7 +91,7 @@ function M.from_ical(text)
 			days = math.max(1, math.floor((to - from) / 86400 + 0.5))
 		end
 		event.block = {
-			title = ical.text(ical.get(doc, range, "SUMMARY")) or "(untitled)",
+			title = single_line(ical.text(ical.get(doc, range, "SUMMARY")) or "(untitled)"),
 			date = string.format("%04d-%02d-%02d", dtstart.year, dtstart.month, dtstart.day),
 			start_min = 0,
 			duration_min = days * 1440,
@@ -128,7 +136,7 @@ function M.from_ical(text)
 	})
 
 	event.block = {
-		title = ical.text(ical.get(doc, range, "SUMMARY")) or "(untitled)",
+		title = single_line(ical.text(ical.get(doc, range, "SUMMARY")) or "(untitled)"),
 		date = string.format("%04d-%02d-%02d", starts.year, starts.month, starts.day),
 		start_min = utils.snap(starts.hour * 60 + starts.min, config.options.granularity),
 		duration_min = math.max(

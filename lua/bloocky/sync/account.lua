@@ -12,9 +12,12 @@ local M = {}
 
 local secrets = {}
 
+-- Deep-copied on every call: normalization and the sync engine's bookkeeping
+-- write onto these tables, and the originals are the very tables the user
+-- passed to setup(). Their config should never grow fields they did not write.
 function M.accounts()
 	local sync = config.options.sync or {}
-	return sync.accounts or {}
+	return vim.deepcopy(sync.accounts or {})
 end
 
 function M.get(account_id)
@@ -103,13 +106,10 @@ end
 local PROVIDERS = { caldav = true, google = true }
 
 -- Fill in what a provider can infer, so the rest of the code can assume it is
--- there. Idempotent; called from validate and before every sync.
+-- there. Idempotent; called from validate and before every sync. Google needs
+-- nothing today: the REST provider builds its own endpoints, and calendars are
+-- chosen with `calendars = { { name = ... } }`, same as CalDAV.
 function M.normalize(account)
-	if account.provider == "google" then
-		-- No `url`: the REST provider builds its own endpoints, and there is
-		-- nothing for a user to configure.
-		account.calendar_id = account.calendar_id or account.username or "primary"
-	end
 	return account
 end
 
@@ -147,6 +147,15 @@ function M.validate(account)
 	if account.provider == "google" then
 		if not account.client_id or account.client_id == "" then
 			table.insert(problems, "google accounts need a `client_id` from your own Google Cloud project")
+		end
+		-- A leftover option from the CalDAV-bridge design. Saying so beats
+		-- silently syncing every calendar under someone who set it expecting
+		-- the sync to be limited to one.
+		if account.calendar_id then
+			table.insert(
+				problems,
+				"WARN " .. tostring(account.id) .. ": `calendar_id` does nothing; pick calendars with `calendars = { { name = ... } }`"
+			)
 		end
 		-- Fatal, not a warning: there is nothing useful a sync can do without a
 		-- token, and burying this among warnings sends people hunting through
