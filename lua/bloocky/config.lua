@@ -52,6 +52,85 @@ M.options = {
 		block = "▎",
 		dooing = "◆",
 		recurring = "󰑖",
+		conflict = "󰀦", -- the calendar overwrote this block
+		readonly = "󰌾", -- lives on a calendar bloocky cannot write to
+	},
+
+	-- Two-way sync with a real calendar. See docs/two-way-sync.md.
+	-- Works with CalDAV servers and with Google Calendar.
+	sync = {
+		enabled = false,
+
+		-- Where sync bookkeeping lives: which block maps to which remote event,
+		-- pending deletions, per-calendar cursors and the conflict trail.
+		-- Defaults to bloocky_sync.json next to save_path.
+		store_path = nil,
+
+		-- Pull when the calendar window opens. The window appears immediately
+		-- and a small indicator shows while the sync runs.
+		sync_on_open = true,
+
+		-- Push after you add, edit or delete a block. Debounced, so a burst of
+		-- edits costs one sync rather than one each.
+		sync_on_edit = true,
+		edit_debounce_ms = 1500,
+
+		-- Keep syncing every N minutes while the calendar window is open.
+		-- 0 turns it off. Backs off after failures rather than hammering a
+		-- server that is down, or your battery when you are offline.
+		interval_min = 15,
+
+		-- How much of the calendar to keep in step. Everything outside this
+		-- window is left alone on the server.
+		window = {
+			past_days = 30,
+			future_days = 180,
+		},
+
+		conflict = {
+			-- How many overwritten local versions to keep for :BloockySyncRestore
+			trail_limit = 50,
+		},
+
+		-- One entry per calendar account.
+		--
+		--   {
+		--     id = "work",
+		--     provider = "caldav",
+		--     url = "https://caldav.fastmail.com/dav/",
+		--     username = "me@fastmail.com",
+		--     -- Any command that prints the password on stdout. Preferred over
+		--     -- `password`, which would sit in plain text in your config.
+		--     -- Whichever you already have, for example:
+		--     --   { "pass", "show", "fastmail/caldav" }
+		--     --   { "secret-tool", "lookup", "service", "bloocky", "key", "caldav" }
+		--     --   { "cat", vim.fn.expand("~/.config/bloocky/caldav-password") }
+		--     password_cmd = { "secret-tool", "lookup", "service", "bloocky", "key", "caldav" },
+		--     -- Omit to sync every calendar the server offers.
+		--     calendars = {
+		--       { name = "Work", mode = "rw", default = true },
+		--       { name = "Team", mode = "ro" },  -- shown, never written to
+		--     },
+		--   }
+		--
+		-- Google uses your own OAuth client, from a Google Cloud project you
+		-- create. bloocky ships no client id on purpose: a shared one would
+		-- put every user behind the same credential and the same unverified-app
+		-- warning. Run :BloockySyncAuth <id> once to authorise.
+		--
+		--   {
+		--     id = "personal",
+		--     provider = "google",
+		--     client_id = "xxxx.apps.googleusercontent.com",
+		--     -- Optional. A "Desktop app" client secret is not confidential
+		--     -- (RFC 8252) and PKCE is what protects the exchange, so you can
+		--     -- leave this out entirely if Google accepts the grant without it.
+		--     client_secret_cmd = { "secret-tool", "lookup", "service", "bloocky", "key", "google" },
+		--     calendar_id = "you@gmail.com",  -- defaults to `username`
+		--   }
+		--
+		-- New blocks are created in the default calendar of the first account.
+		accounts = {},
 	},
 
 	-- Bring tasks from other plugins into the calendar
@@ -83,6 +162,7 @@ M.options = {
 			add = "a",
 			edit = "<CR>",
 			delete = "x",
+			sync = "s", -- sync now (only bound when sync.enabled)
 			close = "q",
 		},
 	},

@@ -2,6 +2,7 @@ local utils = require("bloocky.utils")
 local state = require("bloocky.state")
 local dooing = require("bloocky.dooing")
 local highlights = require("bloocky.highlights")
+local marks = require("bloocky.marks")
 
 local M = {}
 
@@ -139,12 +140,12 @@ function M.render(ctx)
 			local text
 			if block then
 				if block.start_min >= row_s then
-					text = cfg.icons.block .. utils.format_hhmm(block.start_min) .. " " .. block.title
+					text = marks.icon(block) .. utils.format_hhmm(block.start_min) .. " " .. block.title
 					if block.recurrence then
 						text = text .. " " .. cfg.icons.recurring
 					end
 				else
-					text = cfg.icons.block
+					text = marks.icon(block)
 				end
 				if n > 1 then
 					text = utils.fit(text, cws[i] - 2) .. "+ "

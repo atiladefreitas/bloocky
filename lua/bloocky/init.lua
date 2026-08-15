@@ -67,6 +67,67 @@ function M.setup(opts)
 		ui.open()
 		ui.add_block()
 	end, { desc = "Create a new time block" })
+
+	if config.options.sync and config.options.sync.enabled then
+		local account_names = function()
+			local names = {}
+			for _, account in ipairs(require("bloocky.sync.account").accounts()) do
+				table.insert(names, account.id)
+			end
+			return names
+		end
+
+		vim.api.nvim_create_user_command("BloockySync", function(cmd)
+			require("bloocky.sync").run(cmd.args ~= "" and cmd.args or nil)
+		end, { nargs = "?", complete = account_names, desc = "Sync blocks with your calendar" })
+
+		vim.api.nvim_create_user_command("BloockySyncStatus", function()
+			require("bloocky.sync").status()
+		end, { desc = "Show sync status per account" })
+
+		vim.api.nvim_create_user_command("BloockySyncReport", function()
+			require("bloocky.sync").report()
+		end, { desc = "Show conflicts resolved in favour of the remote calendar" })
+
+		vim.api.nvim_create_user_command("BloockySyncRestore", function(cmd)
+			require("bloocky.sync").restore(cmd.args)
+		end, { nargs = 1, desc = "Restore a local version that lost a conflict" })
+
+		vim.api.nvim_create_user_command("BloockySyncAuth", function(cmd)
+			local account = require("bloocky.sync.account").get(cmd.args)
+			if not account then
+				vim.notify("Bloocky: no sync account called " .. cmd.args, vim.log.levels.ERROR)
+				return
+			end
+			require("bloocky.sync.oauth").authorize(account, function(err)
+				if err then
+					vim.notify("Bloocky: authorization failed - " .. err, vim.log.levels.ERROR)
+				else
+					vim.notify("Bloocky: " .. account.id .. " is authorised", vim.log.levels.INFO)
+				end
+			end)
+		end, { nargs = 1, complete = account_names, desc = "Authorise a sync account with OAuth" })
+
+		vim.api.nvim_create_user_command("BloockySyncRevoke", function(cmd)
+			local account = require("bloocky.sync.account").get(cmd.args)
+			if not account then
+				vim.notify("Bloocky: no sync account called " .. cmd.args, vim.log.levels.ERROR)
+				return
+			end
+			require("bloocky.sync.oauth").revoke(account, function(err)
+				vim.notify(
+					"Bloocky: token for " .. account.id .. " deleted locally"
+						.. (err and (", but the server said: " .. err) or " and revoked upstream"),
+					err and vim.log.levels.WARN or vim.log.levels.INFO
+				)
+			end)
+		end, { nargs = 1, complete = account_names, desc = "Revoke and delete a stored OAuth token" })
+
+		vim.api.nvim_create_user_command("BloockySyncReset", function(cmd)
+			require("bloocky.sync.store").reset(cmd.args ~= "" and cmd.args or nil)
+			vim.notify("Bloocky: sync state cleared; the next sync will be a full one", vim.log.levels.INFO)
+		end, { nargs = "?", complete = account_names, desc = "Force a full re-sync" })
+	end
 end
 
 -- `opts` is a view name, or { view = "day"|"week"|"month", mode = "float"|"sidebar" }

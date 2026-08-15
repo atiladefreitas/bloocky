@@ -2,6 +2,7 @@ local utils = require("bloocky.utils")
 local state = require("bloocky.state")
 local dooing = require("bloocky.dooing")
 local highlights = require("bloocky.highlights")
+local marks = require("bloocky.marks")
 
 local M = {}
 
@@ -113,7 +114,7 @@ function M.render(ctx)
 		if block then
 			local text
 			if block.start_min >= row_s then
-				text = cfg.icons.block
+				text = marks.icon(block)
 					.. utils.format_hhmm(block.start_min)
 					.. "–"
 					.. utils.format_hhmm(block.start_min + block.duration_min)
@@ -129,7 +130,7 @@ function M.render(ctx)
 					text = text .. " — " .. block.notes:gsub("\n", " ")
 				end
 			else
-				text = cfg.icons.block
+				text = marks.icon(block)
 			end
 			if n > 1 then
 				text = text .. " (+" .. (n - 1) .. ")"

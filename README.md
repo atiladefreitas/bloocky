@@ -2,6 +2,14 @@
 
 A timeblocking calendar for Neovim. Plan your day by placing time blocks on a calendar with **day**, **week** and **month** views, navigate everything with `hjkl`, and optionally bring your [Dooing](https://github.com/atiladefreitas/dooing) tasks straight onto the calendar.
 
+> ### 🔄 Two-way calendar sync
+>
+> Bloocky syncs with **CalDAV** (Fastmail, Nextcloud, iCloud, Radicale…) and **Google Calendar** — blocks you make in Neovim appear in your calendar, and your real events appear on the grid.
+>
+> **→ [Read the calendar guide](CALENDARS.md)** for setup, security and limits.
+>
+> *(Proton Calendar cannot be supported — it has no CalDAV. [Why](CALENDARS.md#why-proton-cannot-work).)*
+
 ![bloocky — week view with the day view alongside](docs/overview.png)
 
 ---
@@ -15,6 +23,7 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
 - 🧱 **Time blocks** — give an action a start time and a duration, and see it spread over the grid as a colored block
 - 🔁 **Recurring blocks** — daily, weekly, weekdays (Mon–Fri) or a custom set of days, with an optional end date
 - 🗨️ **Creation dialog** — a floating form with inline hints; blocks snap to a configurable granularity (30 min by default)
+- 🔄 **[Two-way calendar sync](CALENDARS.md)** — CalDAV and Google Calendar, both directions, with conflicts surfaced and recoverable rather than silently resolved
 - ✅ **[Dooing](https://github.com/atiladefreitas/dooing) integration** — opt-in, read-only: your [Dooing](https://github.com/atiladefreitas/dooing) todos show up on their due date with estimate and priorities, without ever touching Dooing's data
 - 🕐 **Configurable working hours** — decide which hour your day starts and ends, and whether the week starts on Sunday or Monday
 - 💾 **Automatic persistence** — blocks are saved to a JSON file on every change
@@ -100,6 +109,23 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
         block = "▎",
         dooing = "◆",
         recurring = "󰑖",
+        conflict = "󰀦",  -- the calendar overwrote this block
+        readonly = "󰌾",  -- lives on a calendar bloocky cannot write to
+    },
+
+    -- Two-way sync with a real calendar. Off by default.
+    -- Accounts and the rest of the options: see CALENDARS.md
+    sync = {
+        enabled = false,
+        accounts = {},
+
+        sync_on_open = true,      -- pull when the calendar opens
+        sync_on_edit = true,      -- push after a block changes (debounced)
+        edit_debounce_ms = 1500,
+        interval_min = 15,        -- keep syncing while the window is open; 0 disables
+
+        window = { past_days = 30, future_days = 180 },
+        conflict = { trail_limit = 50 },
     },
 
     -- Bring tasks from other plugins into the calendar
@@ -131,6 +157,7 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
             add = "a",
             edit = "<CR>",
             delete = "x",
+            sync = "s",       -- only bound when sync is enabled
             close = "q",
         },
     },
@@ -161,6 +188,7 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
 | `a`            | Create a block at the cursor slot                   |
 | `<CR>`         | Edit the block under the cursor (or create one)     |
 | `x`            | Delete the block under the cursor                   |
+| `s`            | Sync with your calendar now (only when sync is on)  |
 | `q` / `<Esc>`  | Close the calendar (`<Esc>` in floating mode only)  |
 
 ### Inside the block dialog
@@ -186,6 +214,18 @@ Invalid fields are marked inline with the reason — fix them and save again.
 - `:BloockySidebar [day|week|month]` — open the calendar as a sidebar
 - `:BloockySidebarToggle [day|week|month]` — toggle the sidebar
 - `:BloockyAdd` — open the calendar and jump straight into the creation dialog
+
+### Calendar sync
+
+Only registered when sync is enabled — see the [calendar guide](CALENDARS.md).
+
+- `:BloockySync [account]` — sync now
+- `:BloockySyncStatus` — last sync, pending changes and problems per account
+- `:BloockySyncReport` — conflicts resolved in the calendar's favour
+- `:BloockySyncRestore <n>` — restore a losing local version as a new block
+- `:BloockySyncAuth <account>` — run the OAuth flow (Google)
+- `:BloockySyncRevoke <account>` — revoke and delete a stored token
+- `:BloockySyncReset [account]` — force a full re-sync
 
 ---
 
@@ -215,6 +255,33 @@ require("bloocky").setup({
 ```
 
 Todos with a due date appear on their due day — in the month view as `◆` entries, in the week view as a `due` strip above the grid, and in the day view as a section listing the time estimate and priorities. Overdue todos are highlighted in red. The integration is **read-only**: Bloocky never modifies [Dooing](https://github.com/atiladefreitas/dooing)'s data.
+
+---
+
+## 🔄 Calendar sync
+
+Bloocky keeps your blocks in step with a real calendar, in both directions:
+
+```lua
+require("bloocky").setup({
+    sync = {
+        enabled = true,
+        accounts = {
+            {
+                id = "work",
+                provider = "caldav",
+                url = "https://caldav.fastmail.com/dav/",
+                username = "you@fastmail.com",
+                password_cmd = { "secret-tool", "lookup", "service", "bloocky", "key", "caldav" },
+            },
+        },
+    },
+})
+```
+
+Press `s` in the calendar to sync, or let it happen on open and after each edit. Google Calendar works too, with your own OAuth client.
+
+**[Full guide → CALENDARS.md](CALENDARS.md)** — CalDAV and Google setup, keeping secrets out of your config, how conflicts are handled, what it will and will not write back, and troubleshooting.
 
 ---
 
@@ -287,7 +354,7 @@ Both modes share the same keymaps, cursor and views, so you can switch between t
 
 All groups are defined with `default = true`, so you can override them in your colorscheme:
 
-`BloockyHeader`, `BloockyTime`, `BloockyGrid`, `BloockyToday`, `BloockyCursor`, `BloockyOtherMonth`, `BloockyMore`, `BloockyDooing`, `BloockyDooingDone`, `BloockyDooingOverdue`, and the block palette `BloockyBlock1` … `BloockyBlock6`.
+`BloockyHeader`, `BloockyTime`, `BloockyGrid`, `BloockyToday`, `BloockyCursor`, `BloockyOtherMonth`, `BloockyMore`, `BloockyDooing`, `BloockyDooingDone`, `BloockyDooingOverdue`, `BloockySyncStatus`, `BloockyBlockConflict`, and the block palette `BloockyBlock1` … `BloockyBlock6`.
 
 ```lua
 vim.api.nvim_set_hl(0, "BloockyBlock1", { fg = "#ffffff", bg = "#005f87" })
@@ -303,6 +370,9 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 ## 🤝 Contributing
 
 Contributions are welcome! Feel free to open issues or submit pull requests.
+
+Known bugs and untested paths are tracked in [BUGS.md](BUGS.md) — each one is
+reproduced rather than guessed at, so they are good places to start.
 
 ---
 

@@ -30,13 +30,19 @@ function M.setup()
 	set("BloockyInput", { bg = "#24283b" })
 	set("BloockyInputBar", { fg = "#7aa2f7", bg = "#24283b" })
 	set("BloockyError", { link = "DiagnosticError" })
+	set("BloockySyncStatus", { link = "Comment" })
+	set("BloockyBlockConflict", { fg = "#1a1b26", bg = "#f7768e", bold = true })
 	for i, color in ipairs(palette) do
 		set("BloockyBlock" .. i, { fg = color.fg, bg = color.bg })
 	end
 end
 
--- Stable color per block, derived from its id
+-- Stable color per block, derived from its id -- except when the sync layer
+-- has something more urgent to say about it.
 function M.block_group(block)
+	if require("bloocky.marks").is_conflicted(block) then
+		return "BloockyBlockConflict"
+	end
 	local sum = 0
 	local id = tostring(block.id or "")
 	for i = 1, #id do

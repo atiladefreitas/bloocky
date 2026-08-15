@@ -10,6 +10,17 @@ local function generate_id()
 	return os.time() .. "_" .. math.random(1000, 9999)
 end
 
+-- The sync sidecar, but only once the user has opted in. Required lazily so a
+-- setup without sync never loads a line of it.
+local function sync_store()
+	local sync = config.options.sync
+	if not (sync and sync.enabled) then
+		return nil
+	end
+	local ok, store = pcall(require, "bloocky.sync.store")
+	return ok and store or nil
+end
+
 -- Load blocks from disk
 function M.load_blocks()
 	local path = config.options.save_path
@@ -65,13 +76,17 @@ function M.add_block(fields)
 		notes = fields.notes or "",
 		recurrence = fields.recurrence, -- nil | { type, days?, until_date? }
 		created_at = os.time(),
+		updated_at = os.time(), -- bumped on every edit; sync reads it
+		source = fields.source or "local", -- "local" or the sync account it came from
 	}
 	table.insert(M.blocks, block)
 	M.save_blocks()
 	return block
 end
 
--- Update an existing block by id
+-- Update an existing block by id.
+-- Fields are assigned onto the stored table rather than replacing it, so keys
+-- written by another tool survive the edit.
 function M.update_block(id, fields)
 	for _, block in ipairs(M.blocks) do
 		if block.id == id then
@@ -81,6 +96,8 @@ function M.update_block(id, fields)
 			block.duration_min = fields.duration_min
 			block.notes = fields.notes or ""
 			block.recurrence = fields.recurrence
+			block.updated_at = os.time()
+			block.source = block.source or "local" -- backfill for pre-sync blocks
 			M.save_blocks()
 			return block
 		end
@@ -91,6 +108,13 @@ end
 function M.delete_block(id)
 	for i, block in ipairs(M.blocks) do
 		if block.id == id then
+			-- Leave a tombstone first: once the block is gone, "deleted here"
+			-- and "never synced" look identical, and the next pull would put
+			-- the event straight back.
+			local store = sync_store()
+			if store then
+				store.record_deletion(block)
+			end
 			table.remove(M.blocks, i)
 			M.save_blocks()
 			return true

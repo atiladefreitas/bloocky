@@ -24,8 +24,203 @@ local function is_open()
 end
 M.is_open = is_open
 
+--------------------------------------------------------------------------
+-- The "syncing" indicator
+--------------------------------------------------------------------------
+-- A small float over the middle of the editor. The point is that the calendar
+-- opens *now* and the network happens behind it, so this has to be entirely
+-- passive: unfocusable, no autocmds, and it never blocks a keystroke.
+
+local status = { win = nil, buf = nil, timer = nil, depth = 0 }
+local SPINNER = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+
+local function status_teardown()
+	if status.timer then
+		pcall(function()
+			status.timer:stop()
+			status.timer:close()
+		end)
+	end
+	if status.win and vim.api.nvim_win_is_valid(status.win) then
+		pcall(vim.api.nvim_win_close, status.win, true)
+	end
+	status = { win = nil, buf = nil, timer = nil, depth = 0 }
+end
+
+-- Nested calls are counted, so two overlapping syncs do not leave the
+-- indicator hanging when the first one finishes.
+function M.show_status(text)
+	status.depth = status.depth + 1
+	if status.win or not is_open() then
+		return
+	end
+
+	local frame = 1
+	local function label()
+		return "  " .. SPINNER[frame] .. "  " .. text .. "  "
+	end
+
+	local width = utils.dw(label())
+	status.buf = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_buf_set_lines(status.buf, 0, -1, false, { label() })
+
+	local ok, win_id = pcall(vim.api.nvim_open_win, status.buf, false, {
+		relative = "editor",
+		width = width,
+		height = 1,
+		row = math.floor((vim.o.lines - vim.o.cmdheight) / 2) - 1,
+		col = math.floor((vim.o.columns - width) / 2),
+		style = "minimal",
+		border = config.options.window.border,
+		-- Above the calendar (45) so it is not hidden behind it.
+		zindex = 200,
+		focusable = false,
+		noautocmd = true,
+	})
+	if not ok then
+		status.buf = nil
+		return
+	end
+	status.win = win_id
+	vim.api.nvim_set_option_value(
+		"winhighlight",
+		"Normal:BloockySyncStatus,FloatBorder:BloockySyncStatus",
+		{ win = status.win }
+	)
+
+	status.timer = vim.uv.new_timer()
+	status.timer:start(
+		90,
+		90,
+		vim.schedule_wrap(function()
+			if not (status.buf and vim.api.nvim_buf_is_valid(status.buf)) then
+				return
+			end
+			frame = frame % #SPINNER + 1
+			vim.api.nvim_buf_set_lines(status.buf, 0, -1, false, { label() })
+		end)
+	)
+end
+
+function M.hide_status()
+	status.depth = math.max(0, status.depth - 1)
+	if status.depth == 0 then
+		status_teardown()
+	end
+end
+
+--------------------------------------------------------------------------
+
 local function sidebar_options()
 	return config.options.window.sidebar or {}
+end
+
+local function sync_enabled()
+	local sync = config.options.sync
+	return sync and sync.enabled and #(sync.accounts or {}) > 0
+end
+
+-- Sync now, showing the indicator while it runs and redrawing after.
+-- `quiet` is for syncs the user did not ask for by hand.
+function M.sync(opts)
+	opts = opts or {}
+	if not sync_enabled() then
+		if not opts.quiet then
+			vim.notify("Bloocky: sync is not enabled (see sync.accounts)", vim.log.levels.WARN)
+		end
+		return
+	end
+
+	M.show_status(opts.label or "syncing")
+	require("bloocky.sync").run(nil, function(report)
+		M.hide_status()
+		M.render()
+		if opts.on_done then
+			opts.on_done(report)
+		end
+	end, { quiet = opts.quiet })
+end
+
+--------------------------------------------------------------------------
+-- Keeping up while the window is open
+--------------------------------------------------------------------------
+-- A repeating pull, but one that gets out of the way. A laptop that has been
+-- shut in a bag offline for an hour should not have spent that hour retrying
+-- every fifteen minutes, so consecutive failures widen the gap.
+
+local periodic = { timer = nil, failures = 0 }
+
+local function stop_periodic()
+	if periodic.timer then
+		pcall(function()
+			periodic.timer:stop()
+			periodic.timer:close()
+		end)
+	end
+	periodic.timer = nil
+end
+
+local MAX_BACKOFF_STEPS = 3 -- 15m -> 30m -> 60m -> 120m, then level off
+
+local function schedule_periodic()
+	stop_periodic()
+
+	local sync = config.options.sync or {}
+	local minutes = sync.interval_min
+	if not (sync_enabled() and type(minutes) == "number" and minutes > 0) then
+		return
+	end
+
+	local multiplier = 2 ^ math.min(periodic.failures, MAX_BACKOFF_STEPS)
+	periodic.timer = vim.defer_fn(function()
+		periodic.timer = nil
+		-- The window may have closed, or sync been turned off, while we waited.
+		if not (is_open() and sync_enabled()) then
+			return
+		end
+		M.sync({
+			quiet = true,
+			on_done = function(report)
+				if report and #report.errors > 0 then
+					periodic.failures = periodic.failures + 1
+				else
+					periodic.failures = 0
+				end
+				schedule_periodic()
+			end,
+		})
+	end, math.floor(minutes * 60 * 1000 * multiplier))
+end
+
+-- Exposed for the specs; the lifecycle is otherwise tied to the window.
+M.start_periodic_sync = schedule_periodic
+M.stop_periodic_sync = stop_periodic
+
+function M.periodic_state()
+	return { running = periodic.timer ~= nil, failures = periodic.failures }
+end
+
+-- One sync for a burst of edits, rather than one per keystroke. Public so the
+-- coalescing can be tested: without it, editing five blocks in a row would
+-- fire five syncs at the server.
+local edit_timer = nil
+
+function M.schedule_sync()
+	local sync = config.options.sync
+	if not (sync_enabled() and sync.sync_on_edit ~= false) then
+		return
+	end
+	if edit_timer then
+		pcall(function()
+			edit_timer:stop()
+			edit_timer:close()
+		end)
+		edit_timer = nil
+	end
+	edit_timer = vim.defer_fn(function()
+		edit_timer = nil
+		M.sync({ quiet = true })
+	end, sync.edit_debounce_ms or 1500)
 end
 
 -- Columns the sidebar split asks for
@@ -107,13 +302,15 @@ end
 
 local function footer_text(width)
 	local km = config.options.keymaps.calendar
+	local sync_hint = (km.sync and sync_enabled()) and (" · " .. km.sync .. " sync") or ""
 	local full = string.format(
-		" %s add · %s edit · %s delete · %s view · %s today · %s close ",
+		" %s add · %s edit · %s delete · %s view · %s today%s · %s close ",
 		km.add or "-",
 		km.edit or "-",
 		km.delete or "-",
 		km.cycle_view or "-",
 		km.today or "-",
+		sync_hint,
 		km.close or "-"
 	)
 	if width and utils.dw(full) > width then
@@ -128,6 +325,8 @@ function M.render()
 		return
 	end
 	clamp_cursor()
+	-- Once per redraw, not once per block.
+	require("bloocky.marks").refresh()
 
 	local height, fill = target_height()
 	local ctx = {
@@ -267,6 +466,7 @@ function M.add_block()
 		on_save = function(fields)
 			state.add_block(fields)
 			M.render()
+			M.schedule_sync()
 		end,
 	})
 end
@@ -286,6 +486,7 @@ function M.edit_block()
 			on_save = function(fields)
 				state.update_block(block.id, fields)
 				M.render()
+				M.schedule_sync()
 			end,
 		})
 	end)
@@ -306,6 +507,7 @@ function M.delete_block()
 		if vim.fn.confirm('Delete "' .. label .. '"?', "&Yes\n&No", 2) == 1 then
 			state.delete_block(block.id)
 			M.render()
+			M.schedule_sync()
 		end
 	end)
 end
@@ -369,6 +571,11 @@ local function setup_keymaps()
 	map(km.add, M.add_block)
 	map(km.edit, M.edit_block)
 	map(km.delete, M.delete_block)
+	if km.sync and sync_enabled() then
+		map(km.sync, function()
+			M.sync()
+		end)
+	end
 	map(km.close, M.close)
 	if M.mode ~= "sidebar" then
 		-- In a sidebar <Esc> is far too eager: it is a window you keep around
@@ -523,6 +730,19 @@ function M.open(opts)
 	end
 
 	M.render()
+
+	-- Deferred so the window is on screen before any network work starts:
+	-- opening the calendar must never wait on a server.
+	local sync = config.options.sync
+	if sync_enabled() and sync.sync_on_open ~= false then
+		vim.schedule(function()
+			M.sync({ quiet = true })
+		end)
+	end
+	-- A fresh window starts from a clean slate rather than inheriting the
+	-- backoff of whatever went wrong last time.
+	periodic.failures = 0
+	schedule_periodic()
 end
 
 function M.open_sidebar(view)
@@ -530,6 +750,8 @@ function M.open_sidebar(view)
 end
 
 function M.close()
+	status_teardown()
+	stop_periodic()
 	if is_open() then
 		-- Closing the last window of a tab is refused; drop the buffer instead
 		if not pcall(vim.api.nvim_win_close, win, true) then

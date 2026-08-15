@@ -2,6 +2,7 @@ local utils = require("bloocky.utils")
 local state = require("bloocky.state")
 local dooing = require("bloocky.dooing")
 local highlights = require("bloocky.highlights")
+local marks = require("bloocky.marks")
 
 local M = {}
 
@@ -110,7 +111,7 @@ function M.render(ctx)
 			local entries = {}
 			for _, block in ipairs(state.blocks_for_date(d)) do
 				table.insert(entries, {
-					text = cfg.icons.block .. utils.format_hhmm(block.start_min) .. " " .. block.title,
+					text = marks.icon(block) .. utils.format_hhmm(block.start_min) .. " " .. block.title,
 					grp = highlights.block_group(block),
 					prio = 100,
 				})
