@@ -1,8 +1,3 @@
-can't find pane: nvim
-two-way-sync.md
-block-structure.md
-.gitignore
-
 # Credentials — belt and braces alongside spec/secrets_spec.lua.
 # Nothing here is written into the repo by the plugin (tokens live in
 # stdpath("state"), specs use temp dirs), but a hand-run experiment or a
@@ -19,3 +14,5 @@ client_secret*.json
 # Local plugin state, if anyone points save_path or store_path at the checkout
 bloocky_blocks.json
 bloocky_sync.json
+bloocky_app_sync.json
+devices.json
