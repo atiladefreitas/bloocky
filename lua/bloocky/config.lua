@@ -135,6 +135,20 @@ M.options = {
 		accounts = {},
 	},
 
+	-- Bloocky's OWN server for the companion app (independent of the
+	-- calendar sync above, and of dooing — each product owns its bus).
+	-- Serves GET /blocks and the two-way local-block exchange on its own
+	-- port, authenticated by QR pairing (:BloockyShare).
+	server = {
+		--   "auto"  start on setup IF a device has been paired
+		--   true    always start on setup
+		--   false   never start automatically; :BloockyServe only
+		enabled = "auto",
+		autostart = true,
+		port = 7284,
+		bind = "0.0.0.0", -- "127.0.0.1" for tunnel-only setups
+	},
+
 	-- Bring tasks from other plugins into the calendar
 	integrations = {
 		dooing = {

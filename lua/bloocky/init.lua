@@ -68,6 +68,36 @@ function M.setup(opts)
 		ui.add_block()
 	end, { desc = "Create a new time block" })
 
+	-- The companion-app bus (lua/bloocky/server/) — unrelated to the
+	-- calendar sync commands below, which stay gated on sync.enabled.
+	vim.api.nvim_create_user_command("BloockyShare", function()
+		require("bloocky.server").share()
+	end, { desc = "Show the pairing QR for the companion app" })
+
+	vim.api.nvim_create_user_command("BloockyServe", function()
+		if require("bloocky.server").start() then
+			vim.notify("Bloocky: app server running (:BloockyShare to pair a device)", vim.log.levels.INFO)
+		end
+	end, { desc = "Start the companion-app server" })
+
+	vim.api.nvim_create_user_command("BloockyServeStop", function()
+		require("bloocky.server").stop()
+		vim.notify("Bloocky: app server stopped", vim.log.levels.INFO)
+	end, { desc = "Stop the companion-app server" })
+
+	-- "auto": pairing is the opt-in. A user who never runs :BloockyShare
+	-- runs no server (the paired-device check is one small file read).
+	local server_opts = config.options.server or {}
+	if server_opts.autostart ~= false and server_opts.enabled ~= false then
+		vim.defer_fn(function()
+			local should_start = server_opts.enabled == true
+				or (server_opts.enabled == "auto" and require("bloocky.server.devices").has_paired_devices())
+			if should_start then
+				require("bloocky.server").start()
+			end
+		end, 50)
+	end
+
 	if config.options.sync and config.options.sync.enabled then
 		local account_names = function()
 			local names = {}

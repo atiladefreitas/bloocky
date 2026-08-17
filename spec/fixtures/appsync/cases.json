@@ -1,0 +1,172 @@
+[
+  {
+    "name": "01 empty",
+    "input": {
+      "base": {},
+      "local": { "device": "server", "blocks": [], "tombstones": [] },
+      "remote": { "device": "phone", "blocks": [], "tombstones": [] }
+    },
+    "expected": { "blocks": [], "tombstones": [], "conflicts": [] }
+  },
+  {
+    "name": "02 union of independent creations",
+    "input": {
+      "base": {},
+      "local": { "device": "server", "blocks": [
+        { "id": "s1", "title": "Deep work", "date": "2026-08-17", "start_min": 540, "duration_min": 90, "notes": "", "created_at": 100, "updated_at": 100, "source": "local" }
+      ], "tombstones": [] },
+      "remote": { "device": "phone", "blocks": [
+        { "id": "p1", "title": "Gym", "date": "2026-08-17", "start_min": 1080, "duration_min": 60, "notes": "", "created_at": 200, "updated_at": 200, "source": "local" }
+      ], "tombstones": [] }
+    },
+    "expected": {
+      "blocks": [
+        { "id": "s1", "title": "Deep work", "date": "2026-08-17", "start_min": 540, "duration_min": 90, "notes": "", "created_at": 100, "updated_at": 100, "source": "local" },
+        { "id": "p1", "title": "Gym", "date": "2026-08-17", "start_min": 1080, "duration_min": 60, "notes": "", "created_at": 200, "updated_at": 200, "source": "local" }
+      ],
+      "tombstones": [], "conflicts": []
+    }
+  },
+  {
+    "name": "03 complementary edits: title one side, timing the other",
+    "input": {
+      "base": { "b1": { "id": "b1", "title": "Standup", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 100 } },
+      "local": { "device": "server", "blocks": [
+        { "id": "b1", "title": "Daily standup", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 300 }
+      ], "tombstones": [] },
+      "remote": { "device": "phone", "blocks": [
+        { "id": "b1", "title": "Standup", "date": "2026-08-17", "start_min": 600, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 200 }
+      ], "tombstones": [] }
+    },
+    "expected": {
+      "blocks": [
+        { "id": "b1", "title": "Daily standup", "date": "2026-08-17", "start_min": 600, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 300 }
+      ],
+      "tombstones": [], "conflicts": []
+    }
+  },
+  {
+    "name": "04 timing moves as ONE unit — no mixed halves",
+    "input": {
+      "base": { "b1": { "id": "b1", "title": "Focus", "date": "2026-08-17", "start_min": 540, "duration_min": 60, "notes": "", "created_at": 50, "updated_at": 100 } },
+      "local": { "device": "server", "blocks": [
+        { "id": "b1", "title": "Focus", "date": "2026-08-18", "start_min": 540, "duration_min": 60, "notes": "", "created_at": 50, "updated_at": 300 }
+      ], "tombstones": [] },
+      "remote": { "device": "phone", "blocks": [
+        { "id": "b1", "title": "Focus", "date": "2026-08-17", "start_min": 840, "duration_min": 90, "notes": "", "created_at": 50, "updated_at": 200 }
+      ], "tombstones": [] }
+    },
+    "expected": {
+      "blocks": [
+        { "id": "b1", "title": "Focus", "date": "2026-08-18", "start_min": 540, "duration_min": 60, "notes": "", "created_at": 50, "updated_at": 300 }
+      ],
+      "tombstones": [],
+      "conflicts": [ { "id": "b1", "kind": "edit-vs-edit", "group": "timing", "winner": "local" } ]
+    }
+  },
+  {
+    "name": "05 delete propagates",
+    "input": {
+      "base": { "b1": { "id": "b1", "title": "Old", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 100 } },
+      "local": { "device": "server", "blocks": [], "tombstones": [] },
+      "remote": { "device": "phone", "blocks": [
+        { "id": "b1", "title": "Old", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 100 }
+      ], "tombstones": [] }
+    },
+    "expected": {
+      "blocks": [],
+      "tombstones": [ { "id": "b1" } ],
+      "conflicts": []
+    }
+  },
+  {
+    "name": "06 delete vs edit resurrects",
+    "input": {
+      "base": { "b1": { "id": "b1", "title": "Old", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 100 } },
+      "local": { "device": "server", "blocks": [], "tombstones": [ { "id": "b1", "deleted_at": 500 } ] },
+      "remote": { "device": "phone", "blocks": [
+        { "id": "b1", "title": "Old but moved", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 600 }
+      ], "tombstones": [] }
+    },
+    "expected": {
+      "blocks": [
+        { "id": "b1", "title": "Old but moved", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 600 }
+      ],
+      "tombstones": [],
+      "conflicts": [ { "id": "b1", "kind": "delete-vs-edit", "winner": "remote" } ]
+    }
+  },
+  {
+    "name": "07 recurrence exdates changed one side",
+    "input": {
+      "base": { "b1": { "id": "b1", "title": "Weekly", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "recurrence": { "type": "weekly" }, "created_at": 50, "updated_at": 100 } },
+      "local": { "device": "server", "blocks": [
+        { "id": "b1", "title": "Weekly", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "recurrence": { "type": "weekly", "exdates": ["2026-08-24"] }, "created_at": 50, "updated_at": 300 }
+      ], "tombstones": [] },
+      "remote": { "device": "phone", "blocks": [
+        { "id": "b1", "title": "Weekly", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "recurrence": { "type": "weekly" }, "created_at": 50, "updated_at": 100 }
+      ], "tombstones": [] }
+    },
+    "expected": {
+      "blocks": [
+        { "id": "b1", "title": "Weekly", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "recurrence": { "type": "weekly", "exdates": ["2026-08-24"] }, "created_at": 50, "updated_at": 300 }
+      ],
+      "tombstones": [], "conflicts": []
+    }
+  },
+  {
+    "name": "08 notes superset dissolves the conflict",
+    "input": {
+      "base": { "b1": { "id": "b1", "title": "T", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "a", "created_at": 50, "updated_at": 100 } },
+      "local": { "device": "server", "blocks": [
+        { "id": "b1", "title": "T", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "ab", "created_at": 50, "updated_at": 300 }
+      ], "tombstones": [] },
+      "remote": { "device": "phone", "blocks": [
+        { "id": "b1", "title": "T", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "abc", "created_at": 50, "updated_at": 200 }
+      ], "tombstones": [] }
+    },
+    "expected": {
+      "blocks": [
+        { "id": "b1", "title": "T", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "abc", "created_at": 50, "updated_at": 300 }
+      ],
+      "tombstones": [], "conflicts": []
+    }
+  },
+  {
+    "name": "09 tie broken by device id, smaller wins",
+    "input": {
+      "base": { "b1": { "id": "b1", "title": "X", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 100 } },
+      "local": { "device": "aaa", "blocks": [
+        { "id": "b1", "title": "Left", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 300 }
+      ], "tombstones": [] },
+      "remote": { "device": "bbb", "blocks": [
+        { "id": "b1", "title": "Right", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 300 }
+      ], "tombstones": [] }
+    },
+    "expected": {
+      "blocks": [
+        { "id": "b1", "title": "Left", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 300 }
+      ],
+      "tombstones": [],
+      "conflicts": [ { "id": "b1", "kind": "edit-vs-edit", "group": "title", "winner": "local" } ]
+    }
+  },
+  {
+    "name": "10 null vs absent is not a change",
+    "input": {
+      "base": { "b1": { "id": "b1", "title": "T", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 100 } },
+      "local": { "device": "server", "blocks": [
+        { "id": "b1", "title": "T", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 100 }
+      ], "tombstones": [] },
+      "remote": { "device": "phone", "blocks": [
+        { "id": "b1", "title": "T", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "recurrence": null, "all_day": null, "created_at": 50, "updated_at": 100 }
+      ], "tombstones": [] }
+    },
+    "expected": {
+      "blocks": [
+        { "id": "b1", "title": "T", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 100 }
+      ],
+      "tombstones": [], "conflicts": []
+    }
+  }
+]
