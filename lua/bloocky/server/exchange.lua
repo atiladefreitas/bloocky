@@ -105,6 +105,17 @@ function M.blocks_exchange(device, payload)
 	local revision = store.commit_exchange(device.id, result.base, result.tombstones)
 	store.record_conflicts(device.id, result.conflicts)
 
+	-- A revoked device leaves its base behind, and a base is a full copy of the
+	-- blocks. Prune here rather than on revoke: we are already writing the file.
+	-- The device we are serving is always kept, whatever the paired list says —
+	-- we would otherwise discard the agreement recorded one line above, and the
+	-- next exchange would read its deletions as fresh creations.
+	local keep = { [device.id] = true }
+	for _, entry in ipairs(devices.devices()) do
+		keep[entry.id] = true
+	end
+	store.prune_devices(keep)
+
 	local changed = 0
 	local after = {}
 	for _, block in ipairs(result.blocks) do

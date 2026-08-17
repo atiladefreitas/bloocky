@@ -1,9 +1,9 @@
 -- Resolving accounts and the secrets they need.
 --
--- The rule from docs/two-way-sync.md: a password never lives in the Lua
--- config. What lives there is a *command* that prints one — `pass show ...`,
--- `op read ...`, anything. The value is fetched when it is needed and cached
--- for the session only.
+-- The rule (CALENDARS.md): a password never lives in the Lua config. What
+-- lives there is a *command* that prints one — `pass show ...`, `op read ...`,
+-- anything. The value is fetched when it is needed and cached for the session
+-- only.
 
 local config = require("bloocky.config")
 local http = require("bloocky.sync.http")

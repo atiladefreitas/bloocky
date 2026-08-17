@@ -153,7 +153,7 @@ describe("sync.oauth", function()
 	end)
 
 	describe("scopes", function()
-		-- The narrow pair, per the security decision in docs/two-way-sync.md.
+		-- The narrow pair, per the security decision in CALENDARS.md.
 		it("asks for the least it can, by default", function()
 			local scopes = oauth.scopes({ provider = "google" })
 			truthy(vim.tbl_contains(scopes, "https://www.googleapis.com/auth/calendar.events"))

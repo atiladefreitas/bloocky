@@ -157,6 +157,41 @@ describe("blocks exchange", function()
 		eq(#state.blocks, 0)
 	end)
 
+	it("keeps the whole losing block in the trail, not just which group lost", function()
+		fresh({ block("loc1", { title = "agreed" }) })
+		exchange.blocks_exchange(DEVICE, { blocks = {}, tombstones = {} }) -- agree on a base
+
+		-- Both sides then edit the title away from that base, with the same
+		-- updated_at: a genuine clash, broken by device id, so nvim's loses.
+		state.blocks[1].title = "nvim"
+		state.blocks[1].updated_at = 500
+		state.save_blocks()
+		exchange.blocks_exchange(DEVICE, {
+			blocks = { block("loc1", { title = "phone", updated_at = 500 }) },
+			tombstones = {},
+		})
+		-- Reporting that something was overwritten without keeping it is the
+		-- one thing the trail exists to prevent.
+		local trail = store.conflicts()
+		eq(#trail, 1)
+		eq(trail[1].group, "title")
+		truthy(trail[1].loser_block, "the losing block itself is kept")
+		eq(trail[1].loser_block.id, "loc1")
+	end)
+
+	it("prunes bases for unpaired devices, but never the one it is serving", function()
+		fresh({ block("loc1") })
+		exchange.blocks_exchange({ id = "ghost", name = "revoked" }, { blocks = {}, tombstones = {} })
+		exchange.blocks_exchange(DEVICE, { blocks = {}, tombstones = {} })
+		-- A base is a full copy of the blocks; a revoked device must not keep one.
+		local ids = {}
+		for id in pairs(store.load().devices) do
+			table.insert(ids, id)
+		end
+		eq(#ids, 1)
+		eq(ids[1], DEVICE.id)
+	end)
+
 	it("converges over two rounds", function()
 		fresh({ block("s1") })
 		local first = exchange.blocks_exchange(DEVICE, { blocks = {}, tombstones = {} })

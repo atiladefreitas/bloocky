@@ -57,7 +57,7 @@ M.options = {
 		readonly = "󰌾", -- lives on a calendar bloocky cannot write to
 	},
 
-	-- Two-way sync with a real calendar. See docs/two-way-sync.md.
+	-- Two-way sync with a real calendar. See CALENDARS.md.
 	-- Works with CalDAV servers and with Google Calendar.
 	sync = {
 		enabled = false,

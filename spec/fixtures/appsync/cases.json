@@ -168,5 +168,25 @@
       ],
       "tombstones": [], "conflicts": []
     }
+  },
+  {
+    "name": "11 unknown keys are preserved, never interpreted",
+    "input": {
+      "base": {
+        "b1": { "id": "b1", "title": "T", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 100 }
+      },
+      "local": { "device": "server", "blocks": [
+        { "id": "b1", "title": "Left", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 300, "colour": "#ff0000", "app_only": { "pinned": true } }
+      ], "tombstones": [] },
+      "remote": { "device": "phone", "blocks": [
+        { "id": "b1", "title": "Left", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 400, "app_only": { "pinned": false } }
+      ], "tombstones": [] }
+    },
+    "expected": {
+      "blocks": [
+        { "id": "b1", "title": "Left", "date": "2026-08-17", "start_min": 540, "duration_min": 30, "notes": "", "created_at": 50, "updated_at": 400, "colour": "#ff0000", "app_only": { "pinned": false } }
+      ],
+      "tombstones": [], "conflicts": []
+    }
   }
 ]

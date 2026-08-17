@@ -373,7 +373,7 @@ describe("sync engine", function()
 			truthy(server.resources[mapping.href].data:find("T100000", 1, true), "the new start time")
 		end)
 
-		-- The guarantee from docs/two-way-sync.md.
+		-- The guarantee: never re-serialize an event from scratch, patch it.
 		it("preserves parts of the event it does not understand", function()
 			setup()
 			server:put(

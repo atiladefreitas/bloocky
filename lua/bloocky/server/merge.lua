@@ -80,8 +80,40 @@ local function any_group_changed(block, base)
 	return false
 end
 
+-- Every key this module actually reasons about. Anything else on a block was
+-- written by some other tool and is none of our business — see below.
+local KNOWN = { id = true, created_at = true, updated_at = true, source = true }
+for _, group in ipairs(M.GROUPS) do
+	for _, field in ipairs(group.fields) do
+		KNOWN[field] = true
+	end
+end
+
+-- Unknown keys are PRESERVED, never interpreted (docs/block-structure.md, and
+-- the same rule in all three repos). This is the one path that builds a block
+-- rather than copying one, so without this it would be the one writer that
+-- silently drops a key the app or a future version added.
+--
+-- Union of the two LIVE copies, never the base: a key both sides dropped is
+-- gone, and reinstating it from the last agreement would make it immortal. On
+-- disagreement the newer side wins — the same tiebreak a real conflict gets.
+local function carry_unknown(result, l, r, side)
+	local loser, winner = r, l
+	if side == "remote" then
+		loser, winner = l, r
+	end
+	for _, block in ipairs({ loser, winner }) do
+		for key, value in pairs(block or {}) do
+			if not KNOWN[key] and value ~= NIL then
+				result[key] = value
+			end
+		end
+	end
+end
+
 local function merge_groups(id, b, l, r, local_device, remote_device, conflicts)
 	local result = { id = id }
+	carry_unknown(result, l, r, newer_side(l, r, local_device, remote_device))
 
 	for _, group in ipairs(M.GROUPS) do
 		local lc = group_changed(l, b, group)

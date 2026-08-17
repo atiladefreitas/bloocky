@@ -170,6 +170,65 @@ local function check_sync()
 	end
 end
 
+-- The companion-app bus. It fails quietly in exactly the ways the calendar
+-- sync does: a port already taken, a devices file the plugin cannot read, a
+-- bind address that puts it somewhere you did not intend.
+local function check_app_server()
+	vim.health.start("bloocky: companion app")
+	local config = require("bloocky.config")
+	local opts = config.options.server or {}
+	local server = require("bloocky.server")
+	local devices = require("bloocky.server.devices")
+
+	local paired_ok, paired = pcall(devices.devices)
+	if not paired_ok then
+		err("could not read " .. devices.path(), "Delete it to start pairing fresh.")
+		return
+	end
+
+	if opts.enabled == false then
+		ok("disabled (server.enabled = false; :BloockyServe still starts it by hand)")
+	elseif opts.enabled == true then
+		ok("always on (server.enabled = true)")
+	else
+		ok(("auto: starts once a device is paired (%d paired)"):format(#paired))
+	end
+
+	if server.is_running() then
+		ok(("listening on %s:%d"):format(opts.bind or "0.0.0.0", opts.port or 7284))
+	elseif #paired > 0 and opts.enabled ~= false then
+		warn("not running", "Run :BloockyServe, or check :messages for a bind failure.")
+	else
+		ok("not running (nothing paired yet — run :BloockyShare)")
+	end
+
+	if (opts.bind or "0.0.0.0") ~= "127.0.0.1" then
+		ok("reachable on your LAN — every route but the QR page needs a paired token")
+	else
+		ok("bound to loopback only; a phone needs a tunnel to reach it")
+	end
+
+	-- The device file holds bearer-token hashes, not tokens, but a world-readable
+	-- one still leaks which devices you own and when you last used them.
+	local stat = vim.uv.fs_stat(devices.path())
+	if not stat then
+		ok("no devices paired yet")
+	else
+		local mode = string.format("%o", stat.mode % 512)
+		if mode == "600" then
+			ok(#paired .. " device(s) paired, file readable only by you")
+		else
+			warn("the devices file is mode " .. mode, "It should be 600: " .. devices.path())
+		end
+	end
+
+	local store = require("bloocky.server.store")
+	local unread = store.unacknowledged_count()
+	if unread > 0 then
+		warn(unread .. " unresolved app-sync conflict(s)", "See " .. store.path() .. ".")
+	end
+end
+
 local function check_timezone()
 	vim.health.start("bloocky: timezone")
 	local tz = require("bloocky.sync.tz")
@@ -223,6 +282,7 @@ function M.check()
 	check_timezone()
 	check_appearance()
 	check_sync()
+	check_app_server()
 end
 
 return M

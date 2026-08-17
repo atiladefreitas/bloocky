@@ -5,8 +5,8 @@
 -- token carrying only `calendar.events` + `calendar.calendarlist.readonly`,
 -- every CalDAV request returns 403 insufficientPermissions, while the same
 -- token drives REST fine. The bridge wants the broad `auth/calendar` scope —
--- the one that can permanently delete calendars — so it is out. See
--- docs/two-way-sync.md.
+-- the one that can permanently delete calendars — so it is out. Do not
+-- re-litigate this without re-running that probe.
 --
 -- Events are translated into iCalendar text on the way in, so everything
 -- downstream (recurrence modelling, lossiness detection, timezone handling in

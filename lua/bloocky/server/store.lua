@@ -2,13 +2,13 @@
 -- server/httpd.lua for the copy-not-require rule). This sidecar is for
 -- the COMPANION-APP bus only — the calendar sync's sidecar is
 -- sync/store.lua (bloocky_sync.json) and the two never mix.
--- The sync sidecar: what the merge needs remembered between exchanges, kept
--- out of the todos file (bloocky_blocks.json is a contract other tools read;
--- bases and conflict trails are nobody else's business — the same reasoning
--- as bloocky's bloocky_sync.json).
+-- The app-sync sidecar: what the merge needs remembered between exchanges,
+-- kept out of the blocks file (bloocky_blocks.json is a contract other tools
+-- read; bases and conflict trails are nobody else's business — the same
+-- reasoning as the calendar sync's bloocky_sync.json).
 --
 -- The base is PER DEVICE: it is the state this server and that device last
--- agreed on, so two phones each have their own. Bases hold full todo values,
+-- agreed on, so two phones each have their own. Bases hold full block values,
 -- not hashes — a three-way merge needs to know *which field group* changed,
 -- and only values can answer that.
 
@@ -21,12 +21,12 @@ local data = nil
 local function empty()
 	return {
 		version = VERSION,
-		-- device id -> { revision = n, base = { [todo id] = todo },
+		-- device id -> { revision = n, base = { [block id] = block },
 		--                tombstones = { { id, deleted_at }, ... },
 		--                last_sync = unix seconds }
 		devices = {},
-		-- The losing versions, so a lost edit is restorable. Same shape of
-		-- promise as bloocky's trail: never destroy silently.
+		-- The losing versions, so a lost edit is recoverable. Same shape of
+		-- promise as the calendar sync's trail: never destroy silently.
 		conflicts = {},
 	}
 end
@@ -73,7 +73,7 @@ end
 
 -- Temp file + rename, 0600: atomic within a filesystem, so a crash mid-write
 -- leaves the previous state rather than a truncated file that reads as
--- "never synced" — and the bases mirror someone's whole todo list.
+-- "never synced" — and the bases mirror someone's whole calendar.
 function M.save()
 	ensure_loaded()
 	local path = M.path()
@@ -142,9 +142,11 @@ function M.record_conflicts(device_id, conflicts, now)
 			group = conflict.group,
 			winner = conflict.winner,
 			loser_value = conflict.loser_value,
-			-- The whole losing todo when the caller could supply it — what
-			-- makes :DooingSyncRestore able to bring the loser back.
-			loser_todo = conflict.loser_todo,
+			-- The whole losing block when the caller could supply it (the
+			-- exchange enriches conflicts with one). Without it the trail
+			-- records that something was overwritten but not what, which is
+			-- the opposite of the promise: never destroy silently.
+			loser_block = conflict.loser_block,
 		})
 	end
 	local config = require("bloocky.config")

@@ -10,6 +10,12 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
 >
 > *(Proton Calendar cannot be supported — it has no CalDAV. [Why](CALENDARS.md#why-proton-cannot-work).)*
 
+> ### 📱 Companion app
+>
+> Bloocky serves your **local** blocks to a companion app over your LAN — pair a phone by scanning a QR with `:BloockyShare`, and edits made on either side are merged, not overwritten.
+>
+> **→ [Read the protocol](docs/APP-SYNC.md)** — it is off until you pair something, and every route needs a paired token.
+
 ![bloocky — week view with the day view alongside](docs/overview.png)
 
 ---
@@ -24,9 +30,12 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
 - 🔁 **Recurring blocks** — daily, weekly, weekdays (Mon–Fri) or a custom set of days, with an optional end date
 - 🗨️ **Creation dialog** — a floating form with inline hints; blocks snap to a configurable granularity (30 min by default)
 - 🔄 **[Two-way calendar sync](CALENDARS.md)** — CalDAV and Google Calendar, both directions, with conflicts surfaced and recoverable rather than silently resolved
+- 📅 **All-day events** — imported from your calendar and shown *above* the hour grid, spanning every day they cover, because a date is not a time
+- 📱 **[Companion app sync](docs/APP-SYNC.md)** — opt-in LAN bus for your local blocks, paired by QR, three-way merged
 - ✅ **[Dooing](https://github.com/atiladefreitas/dooing) integration** — opt-in, read-only: your [Dooing](https://github.com/atiladefreitas/dooing) todos show up on their due date with estimate and priorities, without ever touching Dooing's data
 - 🕐 **Configurable working hours** — decide which hour your day starts and ends, and whether the week starts on Sunday or Monday
 - 💾 **Automatic persistence** — blocks are saved to a JSON file on every change
+- 🩺 **`:checkhealth bloocky`** — verifies the things that fail quietly, whether or not you use sync
 
 ---
 
@@ -36,6 +45,7 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
 
 - Neovim `>= 0.10.0`
 - A [Nerd Font](https://www.nerdfonts.com/) for the icons (optional, icons are configurable)
+- `curl` — only if you turn on calendar sync; every network call goes through it
 
 ### Using Lazy.nvim
 
@@ -120,6 +130,10 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
         enabled = false,
         accounts = {},
 
+        -- Sync bookkeeping (mappings, cursors, the conflict trail).
+        -- nil puts bloocky_sync.json next to save_path.
+        store_path = nil,
+
         sync_on_open = true,      -- pull when the calendar opens
         sync_on_edit = true,      -- push after a block changes (debounced)
         edit_debounce_ms = 1500,
@@ -127,6 +141,18 @@ A timeblocking calendar for Neovim. Plan your day by placing time blocks on a ca
 
         window = { past_days = 30, future_days = 180 },
         conflict = { trail_limit = 50 },
+    },
+
+    -- The companion-app bus: bloocky's own LAN server for your LOCAL blocks.
+    -- Independent of the calendar sync above. See docs/APP-SYNC.md
+    server = {
+        -- "auto"  start on setup only if a device has been paired
+        -- true    always start on setup
+        -- false   never start automatically (:BloockyServe still works)
+        enabled = "auto",
+        autostart = true,   -- false: never start on startup, whatever `enabled` says
+        port = 7284,
+        bind = "0.0.0.0",   -- "127.0.0.1" for tunnel-only setups
     },
 
     -- Bring tasks from other plugins into the calendar
@@ -215,6 +241,7 @@ Invalid fields are marked inline with the reason — fix them and save again.
 - `:BloockySidebar [day|week|month]` — open the calendar as a sidebar
 - `:BloockySidebarToggle [day|week|month]` — toggle the sidebar
 - `:BloockyAdd` — open the calendar and jump straight into the creation dialog
+- `:checkhealth bloocky` — verify your setup end to end (works with or without sync)
 
 ### Calendar sync
 
@@ -227,7 +254,14 @@ Only registered when sync is enabled — see the [calendar guide](CALENDARS.md).
 - `:BloockySyncAuth <account>` — run the OAuth flow (Google)
 - `:BloockySyncRevoke <account>` — revoke and delete a stored token
 - `:BloockySyncReset [account]` — force a full re-sync
-- `:checkhealth bloocky` — verify your setup end to end
+
+### Companion app
+
+Always registered — the server itself stays off until you pair something.
+
+- `:BloockyShare` — open the pairing QR in your browser
+- `:BloockyServe` — start the app server by hand
+- `:BloockyServeStop` — stop it
 
 ---
 
@@ -284,6 +318,31 @@ require("bloocky").setup({
 Press `s` in the calendar to sync, or let it happen on open and after each edit. Google Calendar works too, with your own OAuth client.
 
 **[Full guide → CALENDARS.md](CALENDARS.md)** — CalDAV and Google setup, keeping secrets out of your config, how conflicts are handled, what it will and will not write back, and troubleshooting.
+
+---
+
+## 📱 Companion app
+
+Bloocky runs its own small server on your LAN so a companion app can reach your time blocks. Nothing is exposed until you pair a device:
+
+```
+:BloockyShare
+```
+
+Your browser opens a QR code; scan it from the app. From then on the server starts with Neovim (`server.enabled = "auto"`) and every route needs that device's token.
+
+**One road per block.** Blocks backed by a calendar account converge through the calendar — both Neovim and your phone are already clients of it — so only your **local** blocks travel this bus. The app can display calendar-backed blocks but cannot push them back; sending one is rejected outright rather than merged into a duplicate.
+
+Edits from both sides are three-way merged rather than last-write-wins: a title changed on your phone and a time changed in Neovim both survive. When two edits genuinely clash, the losing version is kept so nothing is destroyed silently.
+
+Some things worth knowing:
+
+- The QR page is served over plain HTTP and holds a token valid for **10 minutes**, single use, dead when Neovim exits.
+- Device tokens are stored **hashed**, so `devices.json` leaking does not leak a credential.
+- `bind = "127.0.0.1"` keeps it off the LAN entirely if you would rather reach it through a tunnel.
+- `enabled = false` means it never starts on its own; `:BloockyServe` still works.
+
+**[Protocol → docs/APP-SYNC.md](docs/APP-SYNC.md)** — routes, pairing, the merge rules and the wire shape. Normative, if you are writing a client.
 
 ---
 
@@ -356,12 +415,30 @@ Both modes share the same keymaps, cursor and views, so you can switch between t
 
 All groups are defined with `default = true`, so you can override them in your colorscheme:
 
-`BloockyHeader`, `BloockyTime`, `BloockyGrid`, `BloockyToday`, `BloockyCursor`, `BloockyOtherMonth`, `BloockyMore`, `BloockyDooing`, `BloockyDooingDone`, `BloockyDooingOverdue`, `BloockySyncStatus`, `BloockyBlockConflict`, and the block palette `BloockyBlock1` … `BloockyBlock6`.
+| Group | |
+| --- | --- |
+| `BloockyHeader` `BloockyTime` `BloockyGrid` | chrome — titles, the hour gutter, grid lines |
+| `BloockyToday` `BloockyCursor` `BloockyOtherMonth` `BloockyMore` | the month/week grid |
+| `BloockyBlock1` … `BloockyBlock6` | the block palette, cycled per block (or per calendar when synced) |
+| `BloockyBlockConflict` | a block the calendar overwrote, until you read the report |
+| `BloockySyncStatus` | the `syncing` indicator |
+| `BloockyInput` `BloockyInputBar` `BloockyError` | the block dialog: fields, the active field, an invalid one |
+| `BloockyDooing` `BloockyDooingDone` `BloockyDooingOverdue` | Dooing todos on the grid |
 
 ```lua
 vim.api.nvim_set_hl(0, "BloockyBlock1", { fg = "#ffffff", bg = "#005f87" })
 vim.api.nvim_set_hl(0, "BloockyToday", { fg = "#ff9e64", bold = true })
 ```
+
+---
+
+## 📚 Documentation
+
+| | |
+| --- | --- |
+| [CALENDARS.md](CALENDARS.md) | Two-way calendar sync — CalDAV and Google setup, secrets, conflicts, limits, troubleshooting |
+| [docs/APP-SYNC.md](docs/APP-SYNC.md) | The companion-app LAN protocol. Normative |
+| [docs/block-structure.md](docs/block-structure.md) | The block JSON format, for anything else that reads or writes the file |
 
 ---
 
@@ -373,8 +450,8 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 Contributions are welcome! Feel free to open issues or submit pull requests.
 
-Known bugs and untested paths are tracked in [BUGS.md](BUGS.md) — each one is
-reproduced rather than guessed at, so they are good places to start.
+The test suite runs with `scripts/test.sh` (Neovim itself is the interpreter, so
+specs get the real `vim` API). Please keep it green.
 
 ---
 

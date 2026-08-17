@@ -1,7 +1,7 @@
 -- OAuth 2.0 with PKCE, over a loopback redirect (RFC 8252).
 --
--- The security decisions here were made deliberately in docs/two-way-sync.md
--- and should not be relaxed casually:
+-- The security decisions here were made deliberately and should not be
+-- relaxed casually:
 --
 --   * The OAuth client belongs to the *user*, not to bloocky. A client id
 --     shipped in a public repo would be shared by everyone, so one user's
