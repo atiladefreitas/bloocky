@@ -439,6 +439,7 @@ vim.api.nvim_set_hl(0, "BloockyToday", { fg = "#ff9e64", bold = true })
 | [CALENDARS.md](CALENDARS.md) | Two-way calendar sync — CalDAV and Google setup, secrets, conflicts, limits, troubleshooting |
 | [docs/APP-SYNC.md](docs/APP-SYNC.md) | The companion-app LAN protocol. Normative |
 | [docs/block-structure.md](docs/block-structure.md) | The block JSON format, for anything else that reads or writes the file |
+| [docs/release-v1.1.0-beta.1.md](docs/release-v1.1.0-beta.1.md) | Release notes for the current beta |
 
 ---
 

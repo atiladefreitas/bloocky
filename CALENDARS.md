@@ -44,7 +44,48 @@ require("bloocky").setup({
 
 Then open the calendar and press `s`, or run `:BloockySync`.
 
-> **Try it against a throwaway calendar first.** Bloocky can delete remote events. Point it at a scratch calendar until you trust it.
+> **Try it against a throwaway calendar first.** Bloocky can delete remote events. Point it at a scratch calendar until you trust it. [Radicale](#radicale--a-local-server-to-try-it-safely) takes a minute to set up locally and is the safest way to watch it work.
+
+Step-by-step for your provider: [Fastmail](#fastmail) · [iCloud](#icloud) · [Nextcloud](#nextcloud) · [mailbox.org](#mailboxorg) · [Google](#google-calendar) · [Radicale](#radicale--a-local-server-to-try-it-safely) · [any other CalDAV server](#any-other-caldav-server)
+
+---
+
+## Where the password goes
+
+**Bloocky will not take a password typed into your config.** Well, it will, but it warns you every time, because a plain-text credential in a dotfiles repo is how credentials leak. What it wants instead is a **command that prints the password on stdout**. Bloocky runs it when it needs the value and reads the first line.
+
+Pick whichever you already have:
+
+```lua
+-- libsecret / GNOME Keyring — already present on most Linux desktops
+password_cmd = { "secret-tool", "lookup", "service", "bloocky", "key", "caldav" }
+
+-- pass
+password_cmd = { "pass", "show", "fastmail/caldav" }
+
+-- 1Password CLI
+password_cmd = { "op", "read", "op://Private/Fastmail/caldav" }
+
+-- macOS Keychain
+password_cmd = { "security", "find-generic-password", "-s", "bloocky-caldav", "-w" }
+
+-- Just a file you chmod 600
+password_cmd = { "cat", vim.fn.expand("~/.config/bloocky/caldav-password") }
+```
+
+To store one with `secret-tool` (it will prompt for the value):
+
+```sh
+secret-tool store --label='bloocky caldav' service bloocky key caldav
+```
+
+A shell string works too, and is run through `sh -c`:
+
+```lua
+password_cmd = "pass show fastmail/caldav"
+```
+
+**Always use an app-specific password, never your account password.** Every provider below issues them. They are revocable on their own, and they cannot be used to log in to your account.
 
 ---
 
@@ -62,11 +103,187 @@ Most servers accept the base DAV URL and discover the rest themselves.
 | mailbox.org | `https://dav.mailbox.org/` |
 | Radicale (local) | `http://localhost:5232/` |
 
-**Use an app-specific password**, never your account password. Fastmail, iCloud and Google all issue them; they are revocable on their own and limited to one protocol.
+Discovery from that URL is three requests: `PROPFIND` for `current-user-principal`, then for `calendar-home-set`, then the calendar listing itself. Collections that are address books or task lists are filtered out.
+
+---
+
+### Fastmail
+
+**1. Create an app password.** In Fastmail's web settings, find **Password & Security → App Passwords** and create a new one. When it asks what the password is for, choose the option covering **CalDAV / Calendars** (not "Mail"). Copy it — Fastmail shows it once.
+
+**2. Store it:**
+
+```sh
+secret-tool store --label='bloocky fastmail' service bloocky key caldav
+```
+
+**3. Configure:**
+
+```lua
+require("bloocky").setup({
+    sync = {
+        enabled = true,
+        accounts = {
+            {
+                id = "fastmail",
+                provider = "caldav",
+                url = "https://caldav.fastmail.com/dav/",
+                username = "you@fastmail.com",   -- your full address
+                password_cmd = { "secret-tool", "lookup", "service", "bloocky", "key", "caldav" },
+            },
+        },
+    },
+})
+```
+
+**4. Restart Neovim**, run `:checkhealth bloocky` — you want `password_cmd works (N characters)` — then `:BloockySync`.
+
+Fastmail is the smoothest CalDAV provider to set up; discovery works from the base URL with no extra steps.
+
+---
+
+### iCloud
+
+**1. Create an app-specific password.** Go to [appleid.apple.com](https://appleid.apple.com) → **Sign-In and Security** → **App-Specific Passwords** → **+**. Name it `bloocky`. Copy it — Apple shows it once. It looks like `abcd-efgh-ijkl-mnop`.
+
+> Two-factor authentication must be on. Apple does not offer app-specific passwords without it.
+
+**2. Store it:**
+
+```sh
+secret-tool store --label='bloocky icloud' service bloocky key icloud
+```
+
+**3. Configure:**
+
+```lua
+{
+    id = "icloud",
+    provider = "caldav",
+    url = "https://caldav.icloud.com/",
+    username = "you@icloud.com",   -- your Apple ID email
+    password_cmd = { "secret-tool", "lookup", "service", "bloocky", "key", "icloud" },
+}
+```
+
+**4. Restart, `:checkhealth bloocky`, `:BloockySync`.**
+
+**If discovery fails**, iCloud is the most likely provider to need a hand. It hands out your calendar home on a numbered partition host — something like `https://p42-caldav.icloud.com/1234567890/calendars/`. Bloocky follows that cross-host redirect on purpose; a strict same-origin rule would break iCloud entirely, and `http.check_url` guarantees any such host is reached only over verified TLS. If it still cannot find your calendars, skip discovery entirely:
+
+```lua
+{
+    id = "icloud",
+    provider = "caldav",
+    url = "https://caldav.icloud.com/",
+    username = "you@icloud.com",
+    password_cmd = { "secret-tool", "lookup", "service", "bloocky", "key", "icloud" },
+    -- Paste the calendar-home URL another CalDAV client showed you
+    calendar_home = "https://p42-caldav.icloud.com/1234567890/calendars/",
+}
+```
+
+> ⚠️ iCloud has not been exercised end to end, and is known to be fussy about discovery. An issue with your `:messages` output is genuinely useful.
+
+---
+
+### Nextcloud
+
+**1. Create an app password.** **Settings → Security → Devices & sessions → Create new app password**. Give it a name, copy the password.
+
+**2. Store it:**
+
+```sh
+secret-tool store --label='bloocky nextcloud' service bloocky key nextcloud
+```
+
+**3. Configure.** The URL is your host plus `/remote.php/dav/`:
+
+```lua
+{
+    id = "nextcloud",
+    provider = "caldav",
+    url = "https://cloud.example.com/remote.php/dav/",
+    username = "yourusername",   -- your Nextcloud login, not an email
+    password_cmd = { "secret-tool", "lookup", "service", "bloocky", "key", "nextcloud" },
+}
+```
+
+**4. Restart, `:checkhealth bloocky`, `:BloockySync`.**
+
+> Your Nextcloud must be served over **HTTPS**. Bloocky refuses plain HTTP to anything but `localhost`, and TLS verification is never disabled — not even behind a config flag. A self-signed certificate needs to be trusted by your system's CA store.
+
+---
+
+### mailbox.org
+
+Identical in shape, with mailbox.org's own DAV host. Create the app password in mailbox.org's settings, under the section covering app-specific or third-party passwords.
+
+```lua
+{
+    id = "mailbox",
+    provider = "caldav",
+    url = "https://dav.mailbox.org/",
+    username = "you@mailbox.org",
+    password_cmd = { "secret-tool", "lookup", "service", "bloocky", "key", "mailbox" },
+}
+```
+
+---
+
+### Any other CalDAV server
+
+Anything implementing RFC 4791 should work. Give it the base DAV URL and let discovery do the rest:
+
+```lua
+{
+    id = "myserver",
+    provider = "caldav",
+    url = "https://dav.example.com/",
+    username = "me",
+    password_cmd = { "pass", "show", "example/caldav" },
+}
+```
+
+If discovery fails but you know your calendar-home URL, set `calendar_home` to skip straight to the calendar listing. If `:BloockySyncStatus` reports `no usable calendars`, the collections the server returned were address books or task lists — bloocky filters on `resourcetype` and `supported-calendar-component-set`, and only keeps collections that support `VEVENT`.
+
+---
+
+### Radicale — a local server to try it safely
+
+The best way to trust sync before pointing it at real data.
+
+```sh
+pip install --user radicale
+mkdir -p /tmp/radicale/collections
+printf '[server]\nhosts = localhost:5232\n[auth]\ntype = none\n[storage]\nfilesystem_folder = /tmp/radicale/collections\n' > /tmp/radicale/config
+radicale --config /tmp/radicale/config
+```
+
+Create a calendar:
+
+```sh
+curl -X MKCALENDAR -u test:test http://localhost:5232/test/work/
+```
+
+Point bloocky at it:
+
+```lua
+{
+    id = "local",
+    provider = "caldav",
+    url = "http://localhost:5232/",
+    username = "test",
+    password = "test",   -- a throwaway; the plain-text warning is expected here
+}
+```
+
+Plain HTTP to `localhost` is allowed for exactly this reason. Events land as `.ics` files under `/tmp/radicale/collections/`, where you can read them yourself and watch bloocky work.
+
+---
 
 ### Choosing calendars
 
-Omit `calendars` entirely and Bloocky syncs every calendar the server offers. To be selective — and to mark one you never want written to:
+Omit `calendars` entirely and Bloocky syncs every calendar the server offers, with the first becoming the default for new blocks. To be selective — and to mark one you never want written to:
 
 ```lua
 {
@@ -83,7 +300,24 @@ Omit `calendars` entirely and Bloocky syncs every calendar the server offers. To
 }
 ```
 
-`default = true` marks where new blocks are created. A calendar the server itself reports as read-only is treated as `ro` regardless of what you put here.
+- Names are matched **case-insensitively** against the server's display names. You can match on `href` instead if two calendars share a name.
+- `default = true` marks where new blocks are created. Without it, the first writable calendar wins.
+- A calendar the **server itself** reports as read-only is treated as `ro` regardless of what you put here.
+- Name a calendar the server does not have and you get `calendar "X" not found on the server` rather than silence.
+
+### Multiple accounts
+
+```lua
+sync = {
+    enabled = true,
+    accounts = {
+        { id = "work",     provider = "caldav", url = "...", username = "...", password_cmd = { ... } },
+        { id = "personal", provider = "google", client_id = "...", client_secret_cmd = { ... } },
+    },
+}
+```
+
+`:BloockySync` syncs all of them; `:BloockySync work` syncs one. New blocks are created in the default calendar of the **first** account.
 
 ---
 
@@ -140,6 +374,16 @@ Restart Neovim, then:
 ```
 
 Your browser opens, you approve, and the page tells you to go back to Neovim — which then reports whether the token exchange actually succeeded. **Neovim is the only thing that declares success**; the browser page appearing is not enough on its own.
+
+### 4. Verify
+
+```
+:checkhealth bloocky
+```
+
+You want `token valid` and `token stored, readable only by you`. Then `:BloockySync`, and `:BloockySyncStatus` to see which calendars it found.
+
+A Google calendar where your access role is `reader` or `freeBusyReader` is treated as read-only whatever you put in `calendars` — its blocks carry the `󰌾` marker and edits to them are handed back rather than pushed.
 
 ### Which permissions Bloocky asks for
 
@@ -322,19 +566,4 @@ The server's sync token is being rejected. Harmless but slow; `:BloockySyncReset
 
 ## Testing safely
 
-To try sync without touching a real calendar, run a local [Radicale](https://radicale.org/):
-
-```sh
-pip install --user radicale
-mkdir -p /tmp/radicale/collections
-printf '[server]\nhosts = localhost:5232\n[auth]\ntype = none\n[storage]\nfilesystem_folder = /tmp/radicale/collections\n' > /tmp/radicale/config
-radicale --config /tmp/radicale/config
-```
-
-Create a calendar:
-
-```sh
-curl -X MKCALENDAR -u test:test http://localhost:5232/test/work/
-```
-
-Then point Bloocky at `http://localhost:5232/` with username `test`. Plain HTTP to `localhost` is allowed for exactly this reason. Events land as `.ics` files under `/tmp/radicale/collections/` where you can read them yourself.
+To try sync without touching a real calendar, run a local [Radicale](https://radicale.org/) — see [Radicale — a local server to try it safely](#radicale--a-local-server-to-try-it-safely) above for the full walkthrough.
