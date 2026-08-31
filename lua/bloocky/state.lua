@@ -169,6 +169,31 @@ local function excluded(block, date_str)
 	return false
 end
 
+-- Bloocky's recurrence shapes carry an optional `interval`: "every N days" for
+-- daily, "every N weeks" for the weekly family. A missing or 1 interval means
+-- every period, the original behaviour. Weeks are counted from Monday-aligned
+-- week starts so the parity is stable no matter which weekday the series begins
+-- on.
+local function period_ok(block, date_str, r)
+	local interval = tonumber(r.interval)
+	if not interval or interval <= 1 then
+		return true
+	end
+	local start = utils.str_to_date(block.date)
+	local cur = utils.str_to_date(date_str)
+	if not start or not cur then
+		return true
+	end
+	if r.type == "daily" then
+		local days = math.floor((utils.date_to_time(cur) - utils.date_to_time(start)) / 86400 + 0.5)
+		return days % interval == 0
+	end
+	local ws = utils.week_start_of(start, "monday")
+	local wc = utils.week_start_of(cur, "monday")
+	local weeks = math.floor((utils.date_to_time(wc) - utils.date_to_time(ws)) / 86400 / 7 + 0.5)
+	return weeks % interval == 0
+end
+
 -- Whether an occurrence *begins* on the given day
 local function starts_on(block, date_str, wd)
 	if excluded(block, date_str) then
@@ -185,19 +210,25 @@ local function starts_on(block, date_str, wd)
 		return false
 	end
 	if r.type == "daily" then
-		return true
+		return period_ok(block, date_str, r)
 	end
 	if r.type == "weekly" then
 		local start = utils.str_to_date(block.date)
-		return start ~= nil and utils.wday(start) == wd
+		if not (start ~= nil and utils.wday(start) == wd) then
+			return false
+		end
+		return period_ok(block, date_str, r)
 	end
 	if r.type == "weekdays" then
-		return wd >= 2 and wd <= 6
+		if not (wd >= 2 and wd <= 6) then
+			return false
+		end
+		return period_ok(block, date_str, r)
 	end
 	if r.type == "custom" then
 		for _, day in ipairs(r.days or {}) do
 			if day == wd then
-				return true
+				return period_ok(block, date_str, r)
 			end
 		end
 	end
