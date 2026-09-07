@@ -21,6 +21,7 @@ local M = {}
 local MODULES = {
 	caldav = "bloocky.sync.providers.caldav",
 	google = "bloocky.sync.providers.google",
+	ics = "bloocky.sync.providers.ics",
 }
 
 function M.for_account(account)
