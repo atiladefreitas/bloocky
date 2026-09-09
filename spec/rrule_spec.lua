@@ -61,7 +61,6 @@ describe("sync.rrule", function()
 	-- The half that protects other people's calendars.
 	describe("refusing what it cannot represent", function()
 		local cases = {
-			["FREQ=WEEKLY;INTERVAL=2;BYDAY=TU"] = "INTERVAL",
 			["FREQ=DAILY;COUNT=10"] = "COUNT",
 			["FREQ=MONTHLY;BYMONTHDAY=15"] = "FREQ=MONTHLY",
 			["FREQ=YEARLY"] = "FREQ=YEARLY",
@@ -82,6 +81,12 @@ describe("sync.rrule", function()
 
 		it("accepts an explicit INTERVAL=1", function()
 			eq(rrule.from_rrule("FREQ=DAILY;INTERVAL=1"), { type = "daily" })
+		end)
+
+		it("models INTERVAL > 1 as an every-N recurrence", function()
+			eq(rrule.from_rrule("FREQ=WEEKLY;INTERVAL=2;BYDAY=TU"), { type = "custom", days = { 3 }, interval = 2 })
+			eq(rrule.from_rrule("FREQ=WEEKLY;INTERVAL=2"), { type = "weekly", interval = 2 })
+			eq(rrule.from_rrule("FREQ=DAILY;INTERVAL=3"), { type = "daily", interval = 3 })
 		end)
 	end)
 
@@ -132,7 +137,7 @@ describe("sync.rrule", function()
 		end)
 
 		it("flags a rule it cannot model", function()
-			truthy(rrule.unsupported({ rrule = "FREQ=WEEKLY;INTERVAL=2" }))
+			truthy(rrule.unsupported({ rrule = "FREQ=MONTHLY" }))
 		end)
 	end)
 end)

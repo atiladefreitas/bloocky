@@ -133,6 +133,9 @@ function M.to_rrule(recurrence)
 		return nil
 	end
 
+	if type(recurrence.interval) == "number" and recurrence.interval > 1 then
+		table.insert(parts, "INTERVAL=" .. math.floor(recurrence.interval))
+	end
 	if recurrence.until_date and recurrence.until_date ~= "" then
 		local stamp = until_to_ical(recurrence.until_date)
 		if stamp then
@@ -183,11 +186,18 @@ function M.from_rrule(rrule)
 	if parts.COUNT then
 		return nil, "COUNT is not supported"
 	end
-	if parts.INTERVAL and parts.INTERVAL ~= "1" then
-		return nil, "INTERVAL=" .. parts.INTERVAL .. " is not supported"
+	local interval
+	if parts.INTERVAL then
+		local n = tonumber(parts.INTERVAL)
+		if not n or n < 1 or n ~= math.floor(n) then
+			return nil, "INTERVAL=" .. parts.INTERVAL .. " is not supported"
+		end
+		if n > 1 then
+			interval = n
+		end
 	end
 
-	local recurrence = {}
+	local recurrence = { interval = interval }
 	if parts.UNTIL then
 		local date = until_from_ical(parts.UNTIL)
 		if not date then
