@@ -68,7 +68,7 @@ describe("sync.providers.google", function()
 				id = "x",
 				start = { dateTime = "2026-08-13T09:00:00Z" },
 				["end"] = { dateTime = "2026-08-13T10:00:00Z" },
-				recurrence = { "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU" },
+				recurrence = { "RRULE:FREQ=MONTHLY;BYMONTHDAY=15" },
 			}))
 			truthy(event.lossy)
 			eq(event.block.recurrence, nil)

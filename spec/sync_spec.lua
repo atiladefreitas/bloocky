@@ -526,7 +526,7 @@ describe("sync engine", function()
 			setup()
 			server:put(
 				CALENDAR .. "a.ics",
-				ievent("a@example.com", "Fortnightly", { "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU" })
+				ievent("a@example.com", "Fortnightly", { "RRULE:FREQ=MONTHLY;BYMONTHDAY=15" })
 			)
 			run_sync()
 
@@ -545,7 +545,7 @@ describe("sync engine", function()
 
 			local data = server.resources[CALENDAR .. "a.ics"].data
 			truthy(data:find("SUMMARY:Renamed", 1, true), "the title edit should go up")
-			truthy(data:find("RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU", 1, true), "the rule was flattened")
+			truthy(data:find("RRULE:FREQ=MONTHLY;BYMONTHDAY=15", 1, true), "the rule was flattened")
 			truthy(data:find("DTSTART:20260813T090000", 1, true), "timing must be left alone")
 		end)
 
@@ -556,7 +556,7 @@ describe("sync engine", function()
 			setup()
 			server:put(
 				CALENDAR .. "a.ics",
-				ievent("a@example.com", "Fortnightly", { "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU" })
+				ievent("a@example.com", "Fortnightly", { "RRULE:FREQ=MONTHLY;BYMONTHDAY=15" })
 			)
 			run_sync()
 
