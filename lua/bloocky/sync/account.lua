@@ -103,7 +103,7 @@ end
 -- Validation
 --------------------------------------------------------------------------
 
-local PROVIDERS = { caldav = true, google = true }
+local PROVIDERS = { caldav = true, google = true, ics = true }
 
 -- Fill in what a provider can infer, so the rest of the code can assume it is
 -- there. Idempotent; called from validate and before every sync. Google needs
@@ -124,7 +124,18 @@ function M.validate(account)
 		table.insert(problems, "an account needs an `id`")
 	end
 	if not PROVIDERS[account.provider] then
-		table.insert(problems, ("unknown provider %q (expected caldav or google)"):format(tostring(account.provider)))
+		table.insert(problems, ("unknown provider %q (expected caldav, google or ics)"):format(tostring(account.provider)))
+	end
+
+	if account.provider == "ics" then
+		if type(account.url) ~= "string" or account.url == "" then
+			table.insert(problems, "ics accounts need a `url`")
+		else
+			local refusal = http.check_url(account.url)
+			if refusal then
+				table.insert(problems, refusal)
+			end
+		end
 	end
 
 	if account.provider == "caldav" then
